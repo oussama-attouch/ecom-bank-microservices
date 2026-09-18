@@ -1,0 +1,210 @@
+/* =============================================================================
+   Design tokens — single source of truth for colour, type, radius, shadow,
+   spacing and motion.
+
+   Sources
+     - Colour: docs/DESIGN-BRIEF.md section 2 (light, dark, brand & semantic,
+       signature gradients).
+     - Type: section 3. Layout, radii, shadows, spacing: section 4.
+     - Motion: section 6.
+     - Component-level values (badge radii, header sizes) carry the section
+       they come from in their comment.
+
+   The legacy names at the bottom are aliases, not duplicates: the stylesheet
+   predates this token set and references them in ~38 places. They keep
+   resolving so PR 1 is visually inert; they are retired at the end of PR 5.
+   ============================================================================= */
+
+:root {
+  /* ---- Surfaces, borders, text — brief section 2 (Light Mode) ---- */
+  --surface-0: #ffffff;                    /* cards, main content */
+  --surface-1: #f8fafc;                    /* page background */
+  --surface-2: #f1f5f9;                    /* hover, subtle fills */
+  --border-subtle: rgba(15, 23, 42, 0.06); /* card borders */
+  --text-primary: #0f172a;                 /* headings, body */
+  --text-secondary: #64748b;               /* labels, metadata */
+  --text-tertiary: #94a3b8;                /* disabled, hints */
+
+  /* ---- Brand & semantic — brief section 2 (light column) ---- */
+  --brand-primary: #4f46e5;                /* primary CTAs, active nav */
+  --brand-primary-hover: #4338ca;
+  --brand-accent: #06b6d4;                 /* highlights, charts */
+  --success: #10b981;                      /* COMPLETED, positive deltas */
+  --warning: #f59e0b;                      /* COMPENSATING, teller limit */
+  --danger: #f43f5e;                       /* FAILED, negative deltas */
+  --info: #3b82f6;                         /* neutral badges */
+
+  /* ---- Signature gradients — brief section 2 + PR 1 decision 4 ---- */
+  --gradient-brand: linear-gradient(135deg, #4f46e5 0%, #6366f1 40%, #06b6d4 100%);
+  /* --gradient-surface was a byte-identical duplicate of --gradient-sidebar and
+     was removed in PR 5; the semantic name is --gradient-sidebar. */
+  --gradient-sidebar: linear-gradient(180deg, #0f172a 0%, #111a2e 100%);      /* brief 5.1 */
+  --gradient-nav-active: linear-gradient(180deg, #6366f1 0%, #06b6d4 100%);   /* brief 5.1 accent bar */
+  --gradient-hero: linear-gradient(135deg, #0f172a 0%, #1e1b4b 40%, #312e81 100%);  /* brief 5.7 */
+  --hero-blob-indigo: radial-gradient(circle, rgba(99, 102, 241, 0.4) 0%, transparent 70%);
+  --hero-blob-cyan: radial-gradient(circle, rgba(6, 182, 212, 0.3) 0%, transparent 70%);
+
+  /* ---- On-dark surfaces (login hero — brief 5.7) ---- */
+  --glass-on-dark: rgba(255, 255, 255, 0.06);
+  --glass-on-dark-border: rgba(255, 255, 255, 0.08);
+  --on-dark: #ffffff;
+  --on-dark-muted: rgba(255, 255, 255, 0.6);
+  --shadow-hero: 0 24px 64px rgba(0, 0, 0, 0.4);
+
+  /* ---- 12%-opacity semantic fills — brief 5.5 badge pattern ---- */
+  --success-soft: rgba(16, 185, 129, 0.12);
+  --warning-soft: rgba(245, 158, 11, 0.12);
+  --danger-soft: rgba(244, 63, 94, 0.12);
+  --info-soft: rgba(59, 130, 246, 0.12);
+  /** Tint used to flash a feed row that just arrived. */
+  --brand-primary-soft: rgba(79, 70, 229, 0.18);
+
+  /* ---- Badge label colours — brief 5.5. Deeper than the semantic hues so
+     the 11px uppercase text keeps contrast on its 12% tint. ---- */
+  --success-text: #059669;
+  --warning-text: #d97706;
+  --danger-text: #e11d48;
+  --info-text: #2563eb;
+
+  /* ---- Glass surfaces and chart chrome (brief 8.3 / 5.8) ---- */
+  --glass-bg: rgba(255, 255, 255, 0.6);
+  --glass-blur: 12px;
+  --chart-tooltip-bg: #0f172a;
+  --chart-tooltip-fg: #ffffff;
+
+  /* ---- Shell chrome ------------------------------------------------------
+     The sidebar is permanently dark in both modes (brief 5.1), so its palette
+     is deliberately not overridden in .app-dark. --on-brand is the text colour
+     used on top of --gradient-brand. --avatar-inner stays white in both modes
+     by design (brief 5.2). ---- */
+  --on-brand: #ffffff;
+  --sidebar-fg: rgba(255, 255, 255, 0.7);
+  --sidebar-fg-strong: #ffffff;
+  --sidebar-hover: rgba(255, 255, 255, 0.04);
+  --sidebar-active-bg: rgba(99, 102, 241, 0.15);
+  --sidebar-group: rgba(255, 255, 255, 0.4);
+  --avatar-inner: #ffffff;
+  --overlay-scrim: rgba(255, 255, 255, 0.55);
+
+  /* ---- Typography ---- */
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --text-xs: 11px;    /* nav group headers, table headers, badges (brief 5.1/5.4/5.5) */
+  --text-sm: 12px;    /* small / label, chart axis labels (brief 3 / 5.8) */
+  --text-base: 13px;  /* table cell, mono values (brief 3) */
+  --text-md: 14px;    /* body, card title, login subtitle (brief 3 / 5.7) */
+  --text-lg: 18px;    /* section title, h3 (brief 3) */
+  --text-xl: 24px;    /* page title, h2 (brief 3) */
+  --text-2xl: 28px;   /* hero / login title (brief 5.7) */
+  --text-3xl: 32px;   /* KPI number (brief 3) */
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --tracking-tight: -0.02em; /* page title, h2 (brief 3) */
+  --tracking-snug: -0.01em;  /* section title, h3 (brief 3) */
+  --tracking-kpi: -0.03em;   /* KPI number (brief 3) */
+  --tracking-wide: 0.02em;   /* small / label (brief 3) */
+  --tracking-tag: 0.04em;    /* status badges (brief 5.5) */
+  --tracking-label: 0.06em;  /* table headers (PR 4) */
+  --tracking-group: 0.08em;  /* nav group headers (brief 5.1) */
+
+  /* ---- Radii ---- */
+  --radius-sm: 6px;      /* badges (brief 4) */
+  --radius-md: 8px;      /* chart tooltips (brief 5.8) */
+  --radius-lg: 10px;     /* buttons, inputs, nav items (brief 4 / 5.1) */
+  --radius-xl: 14px;     /* cards (brief 4) */
+  --radius-pill: 999px;  /* pagination (brief 5.4) */
+  --radius-full: 50%;    /* avatar (brief 4) */
+
+  /* ---- Shadows — brief 4. The card pair carries a 1px ring so a card's
+     border and its shadow stay in step. ---- */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 0 0 1px var(--border-subtle); /* card resting */
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.06), 0 0 0 1px var(--border-subtle); /* card hover */
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);                               /* elevated */
+
+  /* ---- Spacing — brief 4 scale ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;   /* card gap, inner card padding (brief 4) */
+  --space-6: 24px;
+  --space-7: 32px;   /* content padding, desktop (brief 4) */
+  --space-8: 40px;
+  --space-9: 48px;
+  --space-10: 64px;
+
+  /* ---- Motion ---- */
+  --duration-fast: 150ms;   /* table row hover (PR 4) */
+  --duration-base: 200ms;   /* nav collapse, buttons (PR 2 / PR 4) */
+  --duration-slow: 300ms;   /* toasts (PR 5) */
+  --duration-entrance: 400ms; /* card entrance; 4 cards + 3x40ms stagger = 520ms (brief 6) */
+  --duration-chart: 600ms;  /* chart animation (PR 3) */
+  --duration-count: 800ms;  /* KPI count-up (PR 3) */
+  --stagger: 40ms;          /* card / chart entrance (PR 3) */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);    /* hover / UI (brief 6) */
+  --ease-chart: cubic-bezier(0.25, 1, 0.5, 1);  /* easeOutQuart, charts (brief 5.8) */
+
+  /* ---------------------------------------------------------------------------
+     Legacy aliases (PR 1 decision 1) — pre-token names, kept so existing
+     references keep resolving. Retired at the end of PR 5.
+     --------------------------------------------------------------------------- */
+  --accent: var(--brand-primary);
+  --accent-hover: var(--brand-primary-hover);
+  --surface: var(--surface-0);
+  --surface-alt: var(--surface-2);
+  --border: var(--border-subtle);
+  --text: var(--text-primary);
+  --text-muted: var(--text-secondary);
+
+  /* Sidebar palette: kept literal — no 1:1 mapping to the new tokens. */
+  --navy-900: #0f172a;
+  --navy-800: #1e293b;
+  --navy-700: #334155;
+}
+
+/* -----------------------------------------------------------------------------
+   Dark mode — every colour token is redefined (brief section 2 "Dark Mode"
+   plus the dark column of "Brand & Semantic"), not just the five that used to
+   be overridden. The legacy aliases need no override: they are var() references
+   and pick up these values automatically.
+   -------------------------------------------------------------------------- */
+.app-dark {
+  --surface-0: #0b1220;
+  --surface-1: #070c17;
+  --surface-2: #141c2e;
+  --border-subtle: rgba(148, 163, 184, 0.08);
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #475569;
+
+  --brand-primary: #6366f1;
+  --brand-primary-hover: #4e46e5;  /* brief says #4e46e5, not the #4f46e5 used in the gradient */
+  --brand-accent: #22d3ee;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #fb7185;
+  --info: #60a5fa;
+
+  --success-soft: rgba(52, 211, 153, 0.12);
+  --warning-soft: rgba(251, 191, 36, 0.12);
+  --danger-soft: rgba(251, 113, 133, 0.12);
+  --info-soft: rgba(96, 165, 250, 0.12);
+  --overlay-scrim: rgba(0, 0, 0, 0.55);
+
+  /* On a dark canvas the deeper badge labels would be unreadable; use the
+     lighter semantic hues instead (brief 5.5 pattern, dark column). */
+  --success-text: #34d399;
+  --warning-text: #fbbf24;
+  --danger-text: #fb7185;
+  --info-text: #60a5fa;
+  --glass-bg: rgba(15, 23, 42, 0.6);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--border-subtle);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--border-subtle);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+}

@@ -1,0 +1,36 @@
+/* =============================================================================
+   Status / role badges — brief section 5.5.
+
+   Global: every page renders statuses through p-tag, so the treatment lives
+   here rather than in a component. Values come from _tokens.scss.
+   ============================================================================= */
+
+.p-tag {
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-tag);
+  line-height: 1.4;
+  gap: 4px;
+  /* Status changes (COMPENSATING -> COMPLETED) fade rather than snap (brief 6). */
+  transition: background-color var(--duration-slow) var(--ease-out),
+              color var(--duration-slow) var(--ease-out);
+}
+
+/* 12%-opacity tint + the deeper label hue (brief 5.5). */
+.p-tag.p-tag-success { background: var(--success-soft); color: var(--success-text); }
+.p-tag.p-tag-warn    { background: var(--warning-soft); color: var(--warning-text); }
+.p-tag.p-tag-danger  { background: var(--danger-soft);  color: var(--danger-text); }
+.p-tag.p-tag-info    { background: var(--info-soft);    color: var(--info-text); }
+
+/* Neutral badges (account counts, "no status" markers). */
+.p-tag.p-tag-secondary {
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+.p-tag.p-tag-contrast {
+  background: var(--text-primary);
+  color: var(--surface-0);
+}

@@ -1,0 +1,67 @@
+/* =============================================================================
+   Typography — webfonts plus the heading and utility scale.
+
+   This partial must be @use'd BEFORE _tokens so that the plain CSS @import
+   below is emitted above every other rule: a CSS @import that appears after
+   any style rule is ignored by browsers.
+   ============================================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* Heading scale.
+   These are classes rather than element selectors on purpose: applying them to
+   bare h1/h2/h3 would restyle the existing screens, and PR 1 must not change
+   any component. PRs 2–5 opt in per element. */
+/* Hero size — used only on login page. Not part of the §3 scale. */
+.h1 {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+
+/* Page title. §3: 24px / 600 / -0.02em */
+.h2 {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+
+/* Section title. §3: 18px / 600 / -0.01em */
+.h3 {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-snug);
+  color: var(--text-primary);
+}
+
+/* Large numeric readout — KPI cards. §3: 32px / 700 / -0.03em / tabular. */
+.kpi-value {
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-kpi);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+/* Small uppercase label set in the mono face (table headers, eyebrow labels). */
+.label-mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--text-secondary);
+}
+
+/* Tabular figures: digits keep a constant width so columns stop jittering. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Monospace body text — ids, offsets, transaction hashes. */
+.mono {
+  font-family: var(--font-mono);
+}

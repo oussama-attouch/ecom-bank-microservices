@@ -1,0 +1,64 @@
+<div class="shell" [class.collapsed]="collapsed" [class.auth-layout]="isAuthRoute">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <span class="logo-mark">EC</span>
+      <span class="brand-name">E-Com Bank</span>
+    </div>
+
+    <nav class="nav">
+      @for (g of menuGroups; track g.header) {
+        @if (!collapsed) {
+          <div class="nav-group">{{ g.header }}</div>
+        }
+        @for (m of g.items; track m.route) {
+          @if (hasRequiredRole(m.roles)) {
+            <a [routerLink]="m.route"
+               routerLinkActive="active"
+               [routerLinkActiveOptions]="{ exact: !!m.exact }"
+               [pTooltip]="collapsed ? m.label : ''"
+               tooltipPosition="right">
+              <i [class]="m.icon"></i>
+              @if (!collapsed) {
+                <span class="nav-label">{{ m.label }}</span>
+              }
+            </a>
+          }
+        }
+      }
+    </nav>
+  </aside>
+
+  <div class="main" (scroll)="onScroll($event)">
+    <header class="topbar" [class.scrolled]="scrolled">
+      <button pButton icon="pi pi-bars" class="p-button-text p-button-rounded" (click)="collapsed = !collapsed" aria-label="Toggle menu"></button>
+      <div class="spacer"></div>
+
+      <app-notification-panel></app-notification-panel>
+      <button pButton [icon]="dark ? 'pi pi-sun' : 'pi pi-moon'" class="p-button-text p-button-rounded" (click)="toggleDark()" aria-label="Toggle theme"></button>
+
+      <ng-container *ngIf="isAuthenticated$ | async; else guest">
+        <span class="signed-in">Signed in as <strong>{{ authService.getUserName() }}</strong></span>
+        @for (role of userRoles$ | async; track role) {
+          <p-tag [value]="role" [severity]="getRoleSeverity(role)"></p-tag>
+        }
+        <button pButton icon="pi pi-sign-out" class="p-button-text p-button-rounded logout-btn" (click)="logout()" aria-label="Log out"></button>
+      </ng-container>
+      <ng-template #guest>
+        <button pButton label="Sign In" icon="pi pi-sign-in" class="p-button-text p-button-rounded" (click)="login()"></button>
+      </ng-template>
+
+      <div class="avatar"><span class="avatar-inner">AU</span></div>
+    </header>
+
+    <main class="content">
+      <router-outlet></router-outlet>
+    </main>
+  </div>
+</div>
+
+<p-toast position="top-right"></p-toast>
+<p-confirmDialog [style]="{ width: '420px' }"></p-confirmDialog>
+
+<div class="loading-overlay" *ngIf="loading$ | async">
+  <p-progressSpinner></p-progressSpinner>
+</div>

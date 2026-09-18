@@ -1,0 +1,10 @@
+/* Shell metadata text (topbar). Colours come from the token set — brief 7. */
+.signed-in {
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.signed-in strong {
+  color: var(--text-primary);
+  font-weight: var(--weight-semibold);
+}

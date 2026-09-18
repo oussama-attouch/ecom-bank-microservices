@@ -1,0 +1,74 @@
+/* =============================================================================
+   Button variants — brief 5.6 plus the PR 4 colour reassignment.
+
+   PrimeNG 19 has no `severity="primary"`: the *default* button is the primary
+   variant, so it is retargeted through the tokens it resolves against rather
+   than being overridden per element. `:root:root` outranks the theme's own
+   `:root` block (and its `.app-dark` block) whatever the injection order, and
+   because the value is `var(--brand-primary)` dark mode follows automatically.
+   ============================================================================= */
+
+:root:root {
+  --p-button-primary-background: var(--brand-primary);
+  --p-button-primary-hover-background: var(--brand-primary-hover);
+  --p-button-primary-active-background: var(--brand-primary-hover);
+  --p-button-primary-border-color: var(--brand-primary);
+  --p-button-primary-hover-border-color: var(--brand-primary-hover);
+  --p-button-primary-active-border-color: var(--brand-primary-hover);
+  --p-button-primary-color: var(--on-brand);
+  --p-button-primary-hover-color: var(--on-brand);
+  --p-button-primary-active-color: var(--on-brand);
+  --p-button-primary-focus-ring-color: var(--brand-primary);
+}
+
+/* Shared motion + shape (brief 5.6) */
+.p-button {
+  border-radius: var(--radius-lg);
+  transition: background var(--duration-base) var(--ease-out),
+              border-color var(--duration-base) var(--ease-out),
+              color var(--duration-base) var(--ease-out),
+              box-shadow var(--duration-base) var(--ease-out);
+}
+
+/* Subtle hover glow on the solid primary variant only. */
+.p-button:not(.p-button-text):not(.p-button-outlined):not(.p-button-link):not(.p-button-secondary):not(.p-button-success):not(.p-button-info):not(.p-button-warn):not(.p-button-help):not(.p-button-danger):not(.p-button-contrast):hover {
+  box-shadow: 0 2px 10px var(--brand-primary-soft);
+}
+
+/* ---- Secondary: transparent fill + hairline border (brief 5.6) ----
+   The brief defines one secondary treatment, so the filled-grey default is
+   normalised here; text buttons keep their own look. */
+.p-button.p-button-secondary:not(.p-button-text),
+.p-button.p-button-outlined.p-button-secondary {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+.p-button.p-button-secondary:not(.p-button-text):hover,
+.p-button.p-button-outlined.p-button-secondary:hover {
+  background: var(--surface-2);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+.p-button.p-button-secondary:not(.p-button-text):active,
+.p-button.p-button-outlined.p-button-secondary:active {
+  background: var(--surface-2);
+}
+
+/* ---- Ghost / text buttons ---- */
+.p-button.p-button-text { color: var(--text-secondary); }
+.p-button.p-button-text:hover { background: var(--surface-2); color: var(--text-primary); }
+
+/* ---- Destructive row actions stay hidden until the row is hovered ----
+   opacity (not display) so the button keeps its layout slot; :focus-visible
+   keeps it reachable by keyboard. */
+.p-datatable .p-datatable-tbody > tr .p-button-danger.p-button-text {
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out),
+              background var(--duration-base) var(--ease-out),
+              color var(--duration-base) var(--ease-out);
+}
+.p-datatable .p-datatable-tbody > tr:hover .p-button-danger.p-button-text,
+.p-datatable .p-datatable-tbody > tr .p-button-danger.p-button-text:focus-visible {
+  opacity: 1;
+}

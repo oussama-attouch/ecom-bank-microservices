@@ -1,0 +1,45 @@
+{
+  "//": "All API traffic goes through the gateway (8888). The gateway's discovery",
+  "// ": "locator exposes /{service-id}/** and strips the service-id prefix",
+  "//  ": "before forwarding, so NO pathRewrite is applied here.",
+  "/customer-service": {
+    "target": "http://localhost:8888",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug",
+    "timeout": 60000,
+    "proxyTimeout": 60000
+  },
+  "/inventory-service": {
+    "target": "http://localhost:8888",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug",
+    "timeout": 60000,
+    "proxyTimeout": 60000
+  },
+  "/billing-service": {
+    "target": "http://localhost:8888",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug",
+    "timeout": 60000,
+    "proxyTimeout": 60000
+  },
+  "/order-service": {
+    "target": "http://localhost:8888",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug",
+    "timeout": 60000,
+    "proxyTimeout": 60000
+  },
+  "/ledger-service": {
+    "target": "http://localhost:8888",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug",
+    "timeout": 60000,
+    "proxyTimeout": 60000
+  }
+}

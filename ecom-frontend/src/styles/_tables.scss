@@ -1,0 +1,104 @@
+/* =============================================================================
+   p-table overrides — brief section 5.4.
+
+   Global on purpose: PR 4 applies the same treatment to every table, and the
+   dashboard feed is the preview. All values come from _tokens.scss.
+   ============================================================================= */
+
+/* Header row: 40px, --surface-1, uppercase 11px labels */
+.p-datatable .p-datatable-thead > tr > th,
+.p-datatable .p-datatable-thead > tr > td {
+  height: 40px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+/* A sorted column must not tint its header — the brief specifies one header
+   background for every column. */
+.p-datatable .p-datatable-thead > tr > th.p-highlight,
+.p-datatable .p-datatable-thead > tr > th.p-datatable-column-sorted,
+.p-datatable .p-datatable-thead > tr > th[class*="sorted"] {
+  background: var(--surface-1);
+  color: var(--text-secondary);
+}
+.p-datatable .p-datatable-thead > tr > th.p-highlight .p-sortable-column-icon,
+.p-datatable .p-datatable-thead > tr > th.p-datatable-column-sorted .p-sortable-column-icon {
+  color: var(--brand-primary);
+}
+
+/* Body rows: 48px tall, 12px 16px cells, hover --surface-2 */
+.p-datatable .p-datatable-tbody > tr {
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.p-datatable .p-datatable-tbody > tr > td {
+  height: 48px;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  background: transparent;
+}
+.p-datatable .p-datatable-tbody > tr:last-child > td { border-bottom: 0; }
+.p-datatable .p-datatable-tbody > tr:hover { background: var(--surface-2); }
+
+/* Subtract the paginator's bottom padding so the card does not double up. */
+.p-datatable .p-datatable-header,
+.p-datatable .p-datatable-footer {
+  background: transparent;
+  border: 0;
+  padding: var(--space-3) 0;
+}
+
+/* Column helpers */
+.p-datatable .num { text-align: right; font-variant-numeric: tabular-nums; }
+.p-datatable .mono-id {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* "No records" row */
+.p-datatable .p-datatable-emptymessage > td {
+  text-align: center;
+  padding: var(--space-6) var(--space-4);
+  color: var(--text-secondary);
+}
+
+/* Paginator: pill buttons, active page uses the brand colour */
+.p-paginator {
+  background: transparent;
+  border: 0;
+  padding: var(--space-3) 0;
+  gap: var(--space-1);
+  justify-content: flex-end;
+}
+.p-paginator .p-paginator-page,
+.p-paginator .p-paginator-next,
+.p-paginator .p-paginator-prev,
+.p-paginator .p-paginator-first,
+.p-paginator .p-paginator-last {
+  min-width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+}
+.p-paginator .p-paginator-page:hover,
+.p-paginator .p-paginator-next:hover,
+.p-paginator .p-paginator-prev:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+.p-paginator .p-paginator-page.p-highlight {
+  background: var(--brand-primary);
+  color: var(--on-brand);
+  font-weight: var(--weight-semibold);
+}
