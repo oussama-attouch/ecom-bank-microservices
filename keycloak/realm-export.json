@@ -1,0 +1,55 @@
+{
+  "realm": "ecom-bank",
+  "enabled": true,
+  "accessTokenLifespan": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "roles": {
+    "realm": [
+      { "name": "TELLER" },
+      { "name": "MANAGER" },
+      { "name": "AUDITOR" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "ecom-frontend",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://localhost:4200/*"],
+      "webOrigins": ["http://localhost:4200"]
+    }
+  ],
+  "users": [
+    {
+      "username": "teller",
+      "enabled": true,
+      "email": "oussamaattouch20@gmail.com",
+      "firstName": "oussama",
+      "lastName": "attouch",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "teller123" }],
+      "realmRoles": ["TELLER"]
+    },
+    {
+      "username": "manager",
+      "enabled": true,
+      "email": "manager@ecom-bank.local",
+      "firstName": "Manager",
+      "lastName": "User",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "manager123" }],
+      "realmRoles": ["TELLER", "MANAGER"]
+    },
+    {
+      "username": "auditor",
+      "enabled": true,
+      "email": "auditor@ecom-bank.local",
+      "firstName": "Auditor",
+      "lastName": "User",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "auditor123" }],
+      "realmRoles": ["AUDITOR"]
+    }
+  ]
+}
