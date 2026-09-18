@@ -1,0 +1,109 @@
+{
+  "browser": "Chrome/153.0.8010.48",
+  "pollStable": true,
+  "afterPoll": {
+    "count": 16,
+    "probes": "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15",
+    "runningAnimations": 0
+  },
+  "consoleErrors": [
+    "console.error: [ERROR] 0-ecom-frontend - token '' is not valid --> token falsy",
+    "console.error: [ERROR] 0-ecom-frontend - token '' is not valid --> token falsy",
+    "console.error: [ERROR] 0-ecom-frontend - token '' is not valid --> token falsy"
+  ],
+  "views": [
+    {
+      "button": "7D",
+      "token": "7d",
+      "over": "Over 7 days",
+      "previous": "From previous 7d",
+      "cards": 16,
+      "volumeValue": "$1,720,435.88",
+      "volumeTrend": "+19.72%From previous 7d",
+      "volumePoints": 7,
+      "subtitles": 12,
+      "clipped": [],
+      "overlapping": [],
+      "labels": [
+        "Assets Under Management",
+        "Active Accounts",
+        "Volume (7d)",
+        "Problem Sagas",
+        "Net Cash Flow (7d)",
+        "Avg Transaction Value (7d)",
+        "Balance Concentration (Top 10)",
+        "Large Transfers (7d, >$10K)",
+        "Saga Success Rate",
+        "Avg Saga Duration",
+        "P95 Saga Duration",
+        "Compensation Rate",
+        "Saga–Journal Reconciliation",
+        "Anomaly Rate (3σ)",
+        "Audit Trail Completeness",
+        "Dashboard SLA (>95%)"
+      ]
+    },
+    {
+      "button": "30D",
+      "token": "30d",
+      "over": "Over 30 days",
+      "previous": "From previous 30d",
+      "cards": 16,
+      "volumeValue": "$5,998,430.03",
+      "volumeTrend": "+53.28%From previous 30d",
+      "volumePoints": 30,
+      "subtitles": 12,
+      "clipped": [],
+      "overlapping": [],
+      "labels": [
+        "Assets Under Management",
+        "Active Accounts",
+        "Volume (30d)",
+        "Problem Sagas",
+        "Net Cash Flow (30d)",
+        "Avg Transaction Value (30d)",
+        "Balance Concentration (Top 10)",
+        "Large Transfers (30d, >$10K)",
+        "Saga Success Rate",
+        "Avg Saga Duration",
+        "P95 Saga Duration",
+        "Compensation Rate",
+        "Saga–Journal Reconciliation",
+        "Anomaly Rate (3σ)",
+        "Audit Trail Completeness",
+        "Dashboard SLA (>95%)"
+      ]
+    },
+    {
+      "button": "1Y",
+      "token": "1y",
+      "over": "Over 1 year",
+      "previous": "From previous 1y",
+      "cards": 16,
+      "volumeValue": "$37,109,935.71",
+      "volumeTrend": "+70.91%From previous 1y",
+      "volumePoints": 12,
+      "subtitles": 12,
+      "clipped": [],
+      "overlapping": [],
+      "labels": [
+        "Assets Under Management",
+        "Active Accounts",
+        "Volume (1y)",
+        "Problem Sagas",
+        "Net Cash Flow (1y)",
+        "Avg Transaction Value (1y)",
+        "Balance Concentration (Top 10)",
+        "Large Transfers (1y, >$10K)",
+        "Saga Success Rate",
+        "Avg Saga Duration",
+        "P95 Saga Duration",
+        "Compensation Rate",
+        "Saga–Journal Reconciliation",
+        "Anomaly Rate (3σ)",
+        "Audit Trail Completeness",
+        "Dashboard SLA (>95%)"
+      ]
+    }
+  ]
+}
