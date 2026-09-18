@@ -9,8 +9,6 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue)](https://www.postgresql.org/)
 [![Keycloak](https://img.shields.io/badge/Keycloak-26-blueviolet)](https://www.keycloak.org/)
 
-![Command Center](docs/screenshots/dashboard/dashboard-light.png)
-
 ---
 
 ## Table of Contents
