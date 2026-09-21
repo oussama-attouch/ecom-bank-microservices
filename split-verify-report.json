@@ -1,0 +1,288 @@
+﻿{
+  "checks": {
+    "loaded": true,
+    "noCredentialInputs": {
+      "inputs": 0,
+      "forms": 0,
+      "passwordInputs": 0,
+      "forgot": false,
+      "signup": false,
+      "remember": false,
+      "social": false
+    },
+    "a11y": {
+      "h1Tag": "H1",
+      "h1Text": "Welcome back",
+      "sectionLabelledBy": "login-title",
+      "ctaLabel": "Sign in with Keycloak",
+      "ctaAriaDescribedBy": "login-trust-notice",
+      "describedByResolves": true,
+      "ctaHeight": 48,
+      "artAriaHidden": "true",
+      "blobsAriaHidden": true,
+      "visibleFocusableCount": 1,
+      "visibleFocusable": [
+        "BUTTON.p-ripple"
+      ],
+      "activeElementIsCta": true
+    },
+    "mobileBrandBanner": {
+      "panelHeight": 160,
+      "wordmarkHidden": true,
+      "taglineHidden": true,
+      "logoVisible": true
+    },
+    "errorBanner": {
+      "present": true,
+      "role": "alert",
+      "text": "Sign-in was cancelled or denied. Please try again.",
+      "color": "rgb(15, 23, 42)",
+      "background": "rgba(244, 63, 94, 0.12)",
+      "borderColor": "rgb(244, 63, 94)",
+      "dismissLabel": "Dismiss error message",
+      "rect": {
+        "x": 877,
+        "y": 463,
+        "w": 334,
+        "h": 62
+      }
+    },
+    "loadingState": {
+      "label": "Redirecting to Keycloak...",
+      "disabled": true,
+      "spinner": true,
+      "arrowGone": true
+    },
+    "oidcRedirectUrl": "http://localhost:8180/realms/ecom-bank/protocol/openid-connect/auth?client_id=ecom-frontend&redirect_uri=http%3A%2F%2Flocalhost%3A4300%2Fcallback&response_type=code&scope=openid%20profile%20email&nonce=627b1d029d1bfefed451c1a96d48e96447eLwZLaU&state=abcc3aee5014acea1c2c409aba889ba244HfCy1Wk&code_challenge=oL4m8cOC-LRtcY7ns7XzNUffudHGY3uBxJmKNs-2s-c&code_challenge_method=S256",
+    "oidc": {
+      "origin": "http://localhost:8180",
+      "path": "/realms/ecom-bank/protocol/openid-connect/auth",
+      "clientId": "ecom-frontend",
+      "responseType": "code",
+      "redirectUri": "http://localhost:4300/callback",
+      "scope": "openid profile email",
+      "codeChallengeMethod": "S256",
+      "hasCodeChallenge": true,
+      "hasState": true,
+      "hasNonce": true
+    }
+  },
+  "measurements": {
+    "at1440": {
+      "viewport": {
+        "w": 1440,
+        "h": 900
+      },
+      "window": {
+        "x": 180,
+        "y": 175,
+        "w": 1080,
+        "h": 640
+      },
+      "brandPanel": {
+        "x": 181,
+        "y": 176,
+        "w": 647,
+        "h": 638
+      },
+      "actionPanel": {
+        "x": 828,
+        "y": 176,
+        "w": 431,
+        "h": 638
+      },
+      "columns": "646.797px 431.188px",
+      "brandPadding": "48px",
+      "actionPadding": "48px",
+      "artDisplay": "shown",
+      "footer": {
+        "x": 661,
+        "y": 869,
+        "w": 118,
+        "h": 15
+      },
+      "cta": {
+        "x": 877,
+        "y": 504,
+        "w": 334,
+        "h": 48
+      }
+    },
+    "pixels1440": {
+      "actionBg": "#ffffff",
+      "brandBg": "#293461",
+      "ctaLeft": "#4f47e5",
+      "ctaMid": "#5854ea",
+      "ctaRight": "#6062ef",
+      "footerBg": "#192b58"
+    },
+    "contrast1440": {
+      "h1 --text-primary on action panel": 17.85,
+      "subtitle --text-secondary on action panel": 4.76,
+      "trust --text-secondary on action panel": 4.76,
+      "wordmark white on brand panel": 11.94,
+      "tagline white on brand panel (large, needs 3.0)": 11.94,
+      "footer --on-dark-muted composited on hero": 5.91,
+      "CTA label white @left": 6.24,
+      "CTA label white @mid": 5.42,
+      "CTA label white @right": 4.68
+    },
+    "at1024": {
+      "viewport": {
+        "w": 1024,
+        "h": 800
+      },
+      "window": {
+        "x": 32,
+        "y": 120,
+        "w": 960,
+        "h": 640
+      },
+      "brandPanel": {
+        "x": 33,
+        "y": 121,
+        "w": 575,
+        "h": 638
+      },
+      "actionPanel": {
+        "x": 608,
+        "y": 121,
+        "w": 383,
+        "h": 638
+      },
+      "columns": "574.797px 383.188px",
+      "brandPadding": "48px",
+      "actionPadding": "48px",
+      "artDisplay": "shown",
+      "footer": {
+        "x": 453,
+        "y": 769,
+        "w": 118,
+        "h": 15
+      },
+      "cta": {
+        "x": 657,
+        "y": 457,
+        "w": 286,
+        "h": 48
+      }
+    },
+    "at768": {
+      "viewport": {
+        "w": 768,
+        "h": 900
+      },
+      "window": {
+        "x": 16,
+        "y": 175,
+        "w": 736,
+        "h": 640
+      },
+      "brandPanel": {
+        "x": 17,
+        "y": 176,
+        "w": 367,
+        "h": 638
+      },
+      "actionPanel": {
+        "x": 384,
+        "y": 176,
+        "w": 367,
+        "h": 638
+      },
+      "columns": "367px 367px",
+      "brandPadding": "32px",
+      "actionPadding": "32px",
+      "artDisplay": "shown",
+      "footer": {
+        "x": 325,
+        "y": 869,
+        "w": 118,
+        "h": 15
+      },
+      "cta": {
+        "x": 417,
+        "y": 504,
+        "w": 302,
+        "h": 48
+      }
+    },
+    "at375": {
+      "viewport": {
+        "w": 375,
+        "h": 812
+      },
+      "window": {
+        "x": 20,
+        "y": 86,
+        "w": 335,
+        "h": 640
+      },
+      "brandPanel": {
+        "x": 21,
+        "y": 87,
+        "w": 333,
+        "h": 160
+      },
+      "actionPanel": {
+        "x": 21,
+        "y": 247,
+        "w": 333,
+        "h": 478
+      },
+      "columns": "333px",
+      "brandPadding": "20px",
+      "actionPadding": "24px",
+      "artDisplay": "shown",
+      "footer": {
+        "x": 128,
+        "y": 781,
+        "w": 118,
+        "h": 15
+      },
+      "cta": {
+        "x": 45,
+        "y": 504,
+        "w": 285,
+        "h": 48
+      }
+    },
+    "pixelsDark": {
+      "actionBg": "#0b1220",
+      "ctaMid": "#5854ea"
+    },
+    "contrastDark": {
+      "h1 --text-primary on dark action panel": 15.19,
+      "subtitle --text-secondary on dark panel": 7.3,
+      "CTA label white on dark": 5.42
+    },
+    "errorPixels": {
+      "bannerBg": "#fee8eb"
+    },
+    "contrastError": {
+      "banner --text-primary on measured tint": 15.27,
+      "banner border --danger on tint (non-text, needs 3.0)": 3.14
+    }
+  },
+  "screenshots": [
+    "docs/screenshots/login/split-1440.png",
+    "docs/screenshots/login/split-1024.png",
+    "docs/screenshots/login/split-768.png",
+    "docs/screenshots/login/split-375.png",
+    "docs/screenshots/login/split-1440-dark.png",
+    "docs/screenshots/login/split-error-banner.png",
+    "docs/screenshots/login/split-loading.png"
+  ],
+  "trace": [
+    "1440",
+    "1024",
+    "768",
+    "375",
+    "dark",
+    "error-banner",
+    "loading",
+    "oidc"
+  ],
+  "failures": [],
+  "port": 9543
+}
