@@ -467,7 +467,7 @@ Deliberately out of scope for this iteration:
 
 **Oussama Attouch**
 
-[GitHub](https://github.com/Oussama-Att) · [LinkedIn]([https://linkedin.com/in/oussama-attouch](https://www.linkedin.com/in/oussama-attouch-bb1558261/))
+[GitHub](https://github.com/Oussama-Att) · [LinkedIn](https://www.linkedin.com/in/oussama-attouch-bb1558261/))
 
 ---
 
