@@ -1,0 +1,54 @@
+<!--
+  Login hero (brief 5.7) — a Keycloak redirect landing, not a credential form.
+
+  There is deliberately no <input> here. Authentication is `authorize()`, which
+  navigates the whole document to Keycloak, so the page owns exactly one
+  control and one state: whether the redirect has started.
+-->
+<div class="login-container">
+  <!-- Decorative depth only: never announced, never clickable. -->
+  <span class="blob blob-indigo" aria-hidden="true"></span>
+  <span class="blob blob-cyan" aria-hidden="true"></span>
+
+  <section class="login-card" aria-labelledby="login-title">
+    <!-- The h1 already names the brand, so the mark would only repeat it. -->
+    <span class="hero-logo" aria-hidden="true">EC</span>
+
+    <h1 id="login-title" class="h1 login-title">E-Com Bank</h1>
+    <p class="login-subtitle">Secure access to your banking workspace.</p>
+
+    @if (errorMessage(); as message) {
+      <div class="error-banner" role="alert">
+        <i
+          class="pi pi-exclamation-triangle error-banner-icon"
+          aria-hidden="true"
+        ></i>
+        <span class="error-banner-text">{{ message }}</span>
+        <button
+          type="button"
+          class="error-banner-dismiss"
+          aria-label="Dismiss error message"
+          (click)="dismissError()"
+        >
+          <i class="pi pi-times" aria-hidden="true"></i>
+        </button>
+      </div>
+    }
+
+    <p-button
+      styleClass="login-cta"
+      type="button"
+      [label]="ctaLabel()"
+      icon="pi pi-sign-in"
+      [loading]="submitting()"
+      [disabled]="submitting()"
+      [autofocus]="!errorMessage()"
+      (onClick)="login()"
+    ></p-button>
+
+    <p id="login-redirect-notice" class="login-notice">
+      <i class="pi pi-shield" aria-hidden="true"></i>
+      <span>You'll be redirected to the secure Keycloak sign-in page.</span>
+    </p>
+  </section>
+</div>

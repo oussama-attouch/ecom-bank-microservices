@@ -1,0 +1,262 @@
+/* =============================================================================
+   Login hero — brief 5.7.
+
+   A Keycloak redirect landing: the page has exactly one control, so this
+   stylesheet is about the CTA's states and the entrance rather than a form.
+
+   Every colour, radius, shadow, spacing step and font resolves through
+   src/styles/_tokens.scss. The on-dark values come from the permanently-dark
+   hero set (--gradient-hero, --glass-on-dark*, --on-dark*, --shadow-hero) plus
+   the three interactive tokens added alongside them, so the page is identical
+   in light and dark mode by design — the same rule the sidebar follows
+   (brief 5.1).
+
+   Geometry the token set does not model stays literal — blob offsets and
+   sizes, the 48px mark, the 44px CTA height and the blur radii — exactly as
+   the sidebar's 240px width already does.
+   ============================================================================= */
+
+.login-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--space-6);
+  overflow: hidden;
+  background: var(--gradient-hero);
+}
+
+/* Soft light blobs. Fixed + pointer-events:none so they never intercept the
+   CTA underneath them. */
+.blob {
+  position: fixed;
+  pointer-events: none;
+  border-radius: var(--radius-full);
+  filter: blur(100px);
+}
+.blob-indigo {
+  top: -160px;
+  right: -160px;
+  width: 600px;
+  height: 600px;
+  opacity: 0.5;
+  background: var(--hero-blob-indigo);
+  animation: blob-drift-indigo 28s var(--ease-out) infinite alternate;
+}
+.blob-cyan {
+  bottom: -140px;
+  left: -140px;
+  width: 500px;
+  height: 500px;
+  opacity: 0.4;
+  background: var(--hero-blob-cyan);
+  animation: blob-drift-cyan 34s var(--ease-out) infinite alternate;
+}
+
+@keyframes blob-drift-indigo {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(calc(-1 * var(--space-8)), var(--space-8), 0) scale(1.08); }
+}
+@keyframes blob-drift-cyan {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(var(--space-8), calc(-1 * var(--space-7)), 0) scale(1.06); }
+}
+
+/* Glass card (brief 5.7). */
+.login-card {
+  position: relative;
+  z-index: 1;
+  width: 420px;
+  max-width: calc(100vw - var(--space-6));
+  padding: var(--space-9) var(--space-8);
+  text-align: center;
+  border: 1px solid var(--glass-on-dark-border);
+  border-radius: var(--radius-xl);
+  background: var(--glass-on-dark);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: var(--shadow-hero);
+  animation: card-in var(--duration-entrance) var(--ease-out) both;
+}
+
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.hero-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-lg);
+  background: var(--gradient-brand-cta);
+  color: var(--on-brand);
+  /* --text-md (14px) left the monogram looking lost inside a 48px square; the
+     scale's next step up is what the sidebar's 32px .logo-mark ratio implies
+     here. (The previous revision hard-coded an off-scale 16px.) */
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+}
+
+/* Size, weight and tracking come from the shared .h1 scale; only the colour is
+   overridden, because .h1 sets --text-primary, which is unreadable on the
+   hero. The element qualifier outranks the plain .h1 class outright instead of
+   relying on stylesheet order. */
+h1.login-title {
+  margin: var(--space-4) 0 var(--space-2);
+  color: var(--on-dark);
+}
+
+.login-subtitle {
+  margin: 0 0 var(--space-6);
+  font-size: var(--text-md);
+  color: var(--on-dark-muted);
+}
+
+/* ---- Error banner (Keycloak redirect failures) ---- */
+.error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  margin-bottom: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-lg);
+  background: var(--danger-soft);
+  /* White, not a rose: measured on the rendered --danger-soft tint (which
+     composites to ~#472f62 over the glass card) --danger-on-dark reads only
+     4.2:1 and light mode's --danger 3.1:1, both under the 4.5:1 that this 12px
+     copy needs. --on-dark measures 11.4:1 there. The red affordance is carried
+     by the tint, the border and the icon instead. */
+  color: var(--on-dark);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  animation: banner-in var(--duration-slow) var(--ease-out);
+}
+
+@keyframes banner-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.error-banner-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  font-size: var(--text-md);
+  color: var(--danger-on-dark);
+}
+
+.error-banner-text { flex: 1; }
+
+.error-banner-dismiss {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background var(--duration-base) var(--ease-out);
+}
+.error-banner-dismiss:hover { background: var(--glass-on-dark); }
+
+/* ---- Primary CTA ----
+   PrimeNG renders <p-button> as a wrapper around <button class="p-button">, so
+   the fill and its states are reached through ::ng-deep — the same route the
+   previous revision of this component used. */
+:host ::ng-deep .login-cta.p-button {
+  width: 100%;
+  height: 44px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--gradient-brand-cta);
+  color: var(--on-brand);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  transition: transform var(--duration-base) var(--ease-out),
+              filter var(--duration-base) var(--ease-out),
+              box-shadow var(--duration-base) var(--ease-out);
+}
+
+:host ::ng-deep .login-cta.p-button:enabled:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+  background: var(--gradient-brand-cta);
+}
+:host ::ng-deep .login-cta.p-button:enabled:active {
+  transform: translateY(0);
+  filter: brightness(0.96);
+  background: var(--gradient-brand-cta);
+}
+
+/* Focus indicator. The outline is the guarantee — PrimeNG's own box-shadow
+   cannot suppress it — and --focus-ring layers the brand halo on top. */
+:host ::ng-deep .login-cta.p-button:focus-visible,
+.error-banner-dismiss:focus-visible {
+  outline: 2px solid var(--on-dark);
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+}
+
+/* PrimeNG disables the button while loading. Hold the fill at full strength so
+   "Redirecting to Keycloak..." keeps its contrast: a loading label is still
+   copy the user has to read, unlike a genuinely inactive control. */
+:host ::ng-deep .login-cta.p-button:disabled {
+  background: var(--gradient-brand-cta);
+  color: var(--on-brand);
+  opacity: 1;
+}
+
+/* ---- Redirect notice ---- */
+.login-notice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin: var(--space-5) 0 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  /* Without this the sentence breaks after "sign-in" and orphans "page." onto a
+     second line at desktop width. Balances it to two even lines instead.
+     Browsers that predate the property just fall back to normal wrapping. */
+  text-wrap: balance;
+  color: var(--on-dark-muted);
+}
+
+/* ---- Responsive (brief 4: 32 / 24 / 16px content padding) ---- */
+@media (max-width: 1023px) {
+  .login-card { padding: var(--space-7) var(--space-6); }
+}
+
+@media (max-width: 767px) {
+  .login-container { padding: var(--space-3); }
+  .login-card {
+    width: 100%;
+    max-width: calc(100vw - var(--space-6));
+    padding: var(--space-6) var(--space-5);
+  }
+  .blob-indigo { width: 380px; height: 380px; }
+  .blob-cyan { width: 320px; height: 320px; }
+}
+
+/* ---- Reduced motion (brief 6) ---- */
+@media (prefers-reduced-motion: reduce) {
+  .blob,
+  .login-card,
+  .error-banner { animation: none; }
+
+  .login-card { opacity: 1; transform: none; }
+
+  :host ::ng-deep .login-cta.p-button:enabled:hover { transform: none; }
+}
