@@ -176,17 +176,17 @@ Every transaction has paired debit/credit entries. The header shows `Total Debit
 
 Account list with replayed balances. The "eye" icon opens a per-account history.
 
-### 4.8 Authentication — OIDC Login Flow
+### 4.8 Authentication — Branded Login Landing
 
-![Login](docs/screenshots/login_app_and_keycloak.png)
+![Login Page](docs/screenshots/login/first_login_page.png)
 
-OIDC Authorization Code flow with PKCE. JWT validated at the gateway against Keycloak's JWKS endpoint.
+The branded split-screen landing page that initiates the OIDC flow. Clicking the CTA redirects the user to Keycloak's hosted login — credentials never touch the application.
 
-### 4.9 Keycloak — Realm Roles
+### 4.9 Keycloak — Hosted Login & Realm Roles
 
-![Keycloak Roles](docs/screenshots/keycloak_users.png)
+![Keycloak Login and Roles](docs/screenshots/login_app_and_keycloak.png)
 
-Three roles — TELLER, MANAGER, AUDITOR — declared declaratively in `realm-export.json`.
+OIDC Authorization Code flow with PKCE. The user authenticates on Keycloak's hosted page (left). JWT is validated at the gateway against Keycloak's JWKS endpoint. Three roles — TELLER, MANAGER, AUDITOR — declared declaratively in `realm-export.json` (right).
 
 ---
 
