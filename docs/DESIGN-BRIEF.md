@@ -54,9 +54,9 @@ Used in login hero, KPI hero cards, active nav glow.
 --gradient-brand: linear-gradient(135deg, #4f46e5 0%, #6366f1 40%, #06b6d4 100%);
 --gradient-surface: linear-gradient(180deg, #0f172a 0%, #111a2e 100%);
 
-### On-dark interactive tokens (login hero, 5.7)
+### Login interactive tokens (split-screen, 5.7)
 
-The hero canvas is permanently dark in both modes, so these carry dark-column values in light mode: `--focus-ring` (`0 0 0 2px var(--on-dark), 0 0 0 5px var(--brand-primary)` — a brand-primary ring alone is only ~2.2:1 on the glass card, below the 3:1 WCAG 2.4.11 requires), `--danger-on-dark` (`#fb7185`, for the error banner's warning icon — measured 4.2:1 on the `--danger-soft` tint against 3.1:1 for light mode's `#f43f5e`; the banner's text is `--on-dark`, since neither rose clears 4.5:1 on that tint and white measures 11.4:1), and `--gradient-brand-cta` (`#4f46e5` -> `#6366f1` — white text on `--gradient-brand` measures 2.4:1 at its cyan end, so text-bearing brand fills use this shorter ramp).
+Two tokens added for the split-screen login. `--focus-ring` (`0 0 0 2px var(--surface-0), 0 0 0 5px var(--brand-primary)`) puts a solid gap in front of the brand halo, because a brand-primary ring alone measures only ~2.2:1 on the window — under the 3:1 WCAG 2.4.11 requires. The gap is `--surface-0`, not `--on-dark`, because the action panel it is drawn on *is* `--surface-0`; a white gap would disappear on it in light mode. `--gradient-brand-cta` (`#4f46e5` -> `#6366f1`) is the ramp for text-bearing brand fills: white on `--gradient-brand` measures 2.4:1 at its cyan end and 4.2:1 even at a button's centre, against 7.4:1 -> 5.9:1 on this shorter ramp. (`--danger-on-dark`, added for the previous centred-card banner, was removed here: the banner now sits on `--surface-0` and uses `--danger-text`/`--text-primary` instead.)
 
 ---
 

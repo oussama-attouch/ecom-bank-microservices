@@ -23,8 +23,8 @@ const ERROR_AUTO_DISMISS_MS = 8000;
  */
 const REDIRECT_WATCHDOG_MS = 15000;
 
-/** Id of the redirect notice the CTA is described by. */
-const REDIRECT_NOTICE_ID = 'login-redirect-notice';
+/** Id of the trust notice the CTA is described by. */
+const TRUST_NOTICE_ID = 'login-trust-notice';
 
 /**
  * Keycloak reports OAuth failures as `error` codes (RFC 6749 section 4.1.2.1).
@@ -188,7 +188,7 @@ export class LoginComponent {
   }
 
   private describeCta(): void {
-    this.ctaButton()?.setAttribute('aria-describedby', REDIRECT_NOTICE_ID);
+    this.ctaButton()?.setAttribute('aria-describedby', TRUST_NOTICE_ID);
   }
 
   /**

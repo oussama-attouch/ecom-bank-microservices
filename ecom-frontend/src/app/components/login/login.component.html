@@ -1,54 +1,94 @@
 <!--
-  Login hero (brief 5.7) — a Keycloak redirect landing, not a credential form.
+  Login landing — split-screen window (brief 5.7).
 
-  There is deliberately no <input> here. Authentication is `authorize()`, which
-  navigates the whole document to Keycloak, so the page owns exactly one
-  control and one state: whether the redirect has started.
+  A Keycloak redirect landing, not a credential form. Authentication is
+  `authorize()`, which navigates the whole document to Keycloak's hosted page;
+  credentials are typed there and never here. That is why this file contains no
+  <input>, no password reveal and no client-side validation: the page owns one
+  control and one state — whether the redirect has started.
 -->
-<div class="login-container">
-  <!-- Decorative depth only: never announced, never clickable. -->
+<div class="login-viewport">
   <span class="blob blob-indigo" aria-hidden="true"></span>
   <span class="blob blob-cyan" aria-hidden="true"></span>
 
-  <section class="login-card" aria-labelledby="login-title">
-    <!-- The h1 already names the brand, so the mark would only repeat it. -->
-    <span class="hero-logo" aria-hidden="true">EC</span>
-
-    <h1 id="login-title" class="h1 login-title">E-Com Bank</h1>
-    <p class="login-subtitle">Secure access to your banking workspace.</p>
-
-    @if (errorMessage(); as message) {
-      <div class="error-banner" role="alert">
-        <i
-          class="pi pi-exclamation-triangle error-banner-icon"
-          aria-hidden="true"
-        ></i>
-        <span class="error-banner-text">{{ message }}</span>
-        <button
-          type="button"
-          class="error-banner-dismiss"
-          aria-label="Dismiss error message"
-          (click)="dismissError()"
-        >
-          <i class="pi pi-times" aria-hidden="true"></i>
-        </button>
+  <section class="login-window" aria-labelledby="login-title">
+    <!-- Brand panel. Everything in it is decorative except the wordmark, so
+         the panel as a whole is not a landmark the user has to tab through. -->
+    <div class="login-brand-panel">
+      <div class="brand-lockup">
+        <span class="hero-logo" aria-hidden="true">EC</span>
+        <span class="wordmark">E-Com Bank</span>
       </div>
-    }
 
-    <p-button
-      styleClass="login-cta"
-      type="button"
-      [label]="ctaLabel()"
-      icon="pi pi-sign-in"
-      [loading]="submitting()"
-      [disabled]="submitting()"
-      [autofocus]="!errorMessage()"
-      (onClick)="login()"
-    ></p-button>
+      <p class="tagline">
+        Banking operations,<br />
+        reimagined.
+      </p>
 
-    <p id="login-redirect-notice" class="login-notice">
-      <i class="pi pi-shield" aria-hidden="true"></i>
-      <span>You'll be redirected to the secure Keycloak sign-in page.</span>
-    </p>
+      <!-- Concentric rings plus one floating blob, drawn from the brand
+           palette. Decorative, so it is hidden from assistive tech. -->
+      <svg
+        class="brand-art"
+        viewBox="0 0 320 320"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <defs>
+          <linearGradient id="login-art-blob" x1="0" y1="0" x2="1" y2="1">
+            <stop class="art-stop-a" offset="0" />
+            <stop class="art-stop-b" offset="1" />
+          </linearGradient>
+        </defs>
+        <!-- Geometry stays inside the 320 viewBox: the rings are centred at
+             (150,168) with a 145 outer radius, so nothing is clipped by the
+             SVG viewport the way a naive (132,188) r=150 would be. -->
+        <circle class="art-ring art-ring-outer" cx="150" cy="168" r="145" />
+        <circle class="art-ring art-ring-mid" cx="150" cy="168" r="100" />
+        <circle class="art-ring art-ring-inner" cx="150" cy="168" r="58" />
+        <circle class="art-blob" cx="232" cy="96" r="42" />
+      </svg>
+    </div>
+
+    <!-- Action panel: the only surface with anything to interact with. -->
+    <div class="login-action-panel">
+      <h1 id="login-title" class="h1 action-title">Welcome back</h1>
+      <p class="action-subtitle">Sign in to access your operations dashboard.</p>
+
+      @if (errorMessage(); as message) {
+        <div class="error-banner" role="alert">
+          <i
+            class="pi pi-exclamation-triangle error-banner-icon"
+            aria-hidden="true"
+          ></i>
+          <span class="error-banner-text">{{ message }}</span>
+          <button
+            type="button"
+            class="error-banner-dismiss"
+            aria-label="Dismiss error message"
+            (click)="dismissError()"
+          >
+            <i class="pi pi-times" aria-hidden="true"></i>
+          </button>
+        </div>
+      }
+
+      <p-button
+        styleClass="login-cta"
+        type="button"
+        iconPos="right"
+        [label]="ctaLabel()"
+        icon="pi pi-arrow-right"
+        [loading]="submitting()"
+        [disabled]="submitting()"
+        autofocus
+        (onClick)="login()"
+      ></p-button>
+
+      <p id="login-trust-notice" class="action-trust">
+        Your credentials never touch this application.
+      </p>
+    </div>
   </section>
+
+  <footer class="login-footer">&copy; 2026 E-Com Bank</footer>
 </div>

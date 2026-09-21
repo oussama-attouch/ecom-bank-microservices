@@ -1,57 +1,65 @@
 /* =============================================================================
-   Login hero — brief 5.7.
+   Login landing — split-screen floating window (brief 5.7).
 
-   A Keycloak redirect landing: the page has exactly one control, so this
-   stylesheet is about the CTA's states and the entrance rather than a form.
+   A Keycloak redirect landing, so this stylesheet is about one control and the
+   entrance around it, not a form.
 
    Every colour, radius, shadow, spacing step and font resolves through
-   src/styles/_tokens.scss. The on-dark values come from the permanently-dark
-   hero set (--gradient-hero, --glass-on-dark*, --on-dark*, --shadow-hero) plus
-   the three interactive tokens added alongside them, so the page is identical
-   in light and dark mode by design — the same rule the sidebar follows
-   (brief 5.1).
+   src/styles/_tokens.scss. The two panels deliberately sit on different
+   surfaces: the brand panel is transparent glass over the permanently-dark
+   --gradient-hero (so it uses the --on-dark* set), while the action panel is an
+   opaque --surface-0 sheet that follows light/dark mode (so it uses the
+   --text-* / --border-subtle set).
 
    Geometry the token set does not model stays literal — blob offsets and
-   sizes, the 48px mark, the 44px CTA height and the blur radii — exactly as
-   the sidebar's 240px width already does.
+   diameters, the 48px mark, the 48px CTA height and the blur radii — exactly
+   as the sidebar's 240px width already does.
    ============================================================================= */
 
-.login-container {
+:host {
+  display: block;
+}
+
+.login-viewport {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
-  padding: var(--space-6);
+  /* A fixed height, not min-height: it gives the window's `max-height: 100%` a
+     basis to resolve against, so the 55% offset below can never push the window
+     past the fold. .main already clips on this route
+     (.shell.auth-layout .main { overflow: hidden }). */
+  height: 100vh;
   overflow: hidden;
   background: var(--gradient-hero);
+  /* The window's optical centre sits at 55% of the viewport rather than 50%.
+     Flex centring splits the free space around the padding, so 10vh more on
+     top moves the centre down by 5vh. */
+  padding: calc(var(--space-6) + 10vh) var(--space-6) var(--space-6);
 }
 
-/* Soft light blobs. Fixed + pointer-events:none so they never intercept the
-   CTA underneath them. */
+/* ---- Background blobs ---- */
 .blob {
-  position: fixed;
+  position: absolute;
   pointer-events: none;
   border-radius: var(--radius-full);
   filter: blur(100px);
 }
 .blob-indigo {
-  top: -160px;
-  right: -160px;
-  width: 600px;
-  height: 600px;
-  opacity: 0.5;
+  top: -140px;
+  right: -140px;
+  width: 520px;
+  height: 520px;
   background: var(--hero-blob-indigo);
-  animation: blob-drift-indigo 28s var(--ease-out) infinite alternate;
+  animation: blob-drift-indigo 24s var(--ease-out) infinite alternate;
 }
 .blob-cyan {
   bottom: -140px;
   left: -140px;
-  width: 500px;
-  height: 500px;
-  opacity: 0.4;
+  width: 420px;
+  height: 420px;
   background: var(--hero-blob-cyan);
-  animation: blob-drift-cyan 34s var(--ease-out) infinite alternate;
+  animation: blob-drift-cyan 32s var(--ease-out) infinite alternate;
 }
 
 @keyframes blob-drift-indigo {
@@ -63,26 +71,49 @@
   to   { transform: translate3d(var(--space-8), calc(-1 * var(--space-7)), 0) scale(1.06); }
 }
 
-/* Glass card (brief 5.7). */
-.login-card {
+/* ---- Floating window ---- */
+.login-window {
   position: relative;
   z-index: 1;
-  width: 420px;
-  max-width: calc(100vw - var(--space-6));
-  padding: var(--space-9) var(--space-8);
-  text-align: center;
+  display: grid;
+  grid-template-columns: 60% 40%;
+  width: min(1080px, calc(100vw - 64px));
+  height: min(640px, calc(100vh - 64px));
+  max-height: 100%;
+  /* Clips both panels to the window's corners. */
+  overflow: hidden;
   border: 1px solid var(--glass-on-dark-border);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-2xl);
   background: var(--glass-on-dark);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   box-shadow: var(--shadow-hero);
-  animation: card-in var(--duration-entrance) var(--ease-out) both;
+  animation: window-in var(--duration-entrance) var(--ease-out) both;
 }
 
-@keyframes card-in {
-  from { opacity: 0; transform: translateY(8px); }
+@keyframes window-in {
+  from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+/* =============================================================================
+   Brand panel (60%) — transparent, so the window's glass and the hero gradient
+   read straight through it.
+   ============================================================================= */
+.login-brand-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 0;
+  padding: var(--space-9);
+  background: transparent;
+  color: var(--on-dark);
+}
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
 
 .hero-logo {
@@ -94,29 +125,93 @@
   border-radius: var(--radius-lg);
   background: var(--gradient-brand-cta);
   color: var(--on-brand);
-  /* --text-md (14px) left the monogram looking lost inside a 48px square; the
-     scale's next step up is what the sidebar's 32px .logo-mark ratio implies
-     here. (The previous revision hard-coded an off-scale 16px.) */
   font-size: var(--text-lg);
   font-weight: var(--weight-bold);
 }
 
-/* Size, weight and tracking come from the shared .h1 scale; only the colour is
-   overridden, because .h1 sets --text-primary, which is unreadable on the
-   hero. The element qualifier outranks the plain .h1 class outright instead of
-   relying on stylesheet order. */
-h1.login-title {
-  margin: var(--space-4) 0 var(--space-2);
+.wordmark {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
   color: var(--on-dark);
 }
 
-.login-subtitle {
-  margin: 0 0 var(--space-6);
-  font-size: var(--text-md);
-  color: var(--on-dark-muted);
+.tagline {
+  margin: 0;
+  font-size: var(--text-4xl);
+  font-weight: var(--weight-bold);
+  line-height: 1.1;
+  letter-spacing: var(--tracking-tight);
+  color: var(--on-dark);
 }
 
-/* ---- Error banner (Keycloak redirect failures) ---- */
+.brand-art {
+  display: block;
+  width: min(320px, 100%);
+  aspect-ratio: 1;
+  /* Shrinkable so a short viewport squeezes the rings rather than overflowing
+     the panel; the SVG keeps its own proportions either way. */
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+.art-ring {
+  fill: none;
+  stroke: var(--brand-primary);
+}
+.art-ring-outer { stroke-width: 1;   opacity: 0.25; }
+.art-ring-mid   { stroke-width: 1;   opacity: 0.4; }
+.art-ring-inner { stroke-width: 1.5; opacity: 0.65; }
+
+.art-stop-a { stop-color: var(--brand-accent); }
+.art-stop-b { stop-color: var(--brand-primary); }
+
+.art-blob {
+  fill: url(#login-art-blob);
+  opacity: 0.55;
+  animation: art-float 9s var(--ease-out) infinite alternate;
+}
+
+@keyframes art-float {
+  from { transform: translateY(0); }
+  to   { transform: translateY(calc(-1 * var(--space-4))); }
+}
+
+/* =============================================================================
+   Action panel (40%) — an opaque sheet on --surface-0, so it follows the theme
+   instead of the permanently-dark hero.
+   ============================================================================= */
+.login-action-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: var(--space-9);
+  border-left: 1px solid var(--border-subtle);
+  background: var(--surface-0);
+  /* Square where it meets the brand panel, rounded where it meets the window
+     corner. The window also clips, so this is belt-and-braces. */
+  border-radius: 0 var(--radius-2xl) var(--radius-2xl) 0;
+  color: var(--text-primary);
+}
+
+/* Size, weight, tracking and colour all come from the shared .h1 scale, whose
+   --text-primary is exactly right on --surface-0 in both modes. */
+.action-title {
+  margin: 0 0 var(--space-2);
+}
+
+.action-subtitle {
+  margin: 0 0 var(--space-8);
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+}
+
+/* ---- Error banner ----
+   The banner now sits on --surface-0 rather than the permanently-dark hero, so
+   its text is --text-primary. Neither the rose pair nor the old white would
+   work here: on the composited --danger-soft tint over white, --on-dark
+   measures 1.0:1 and --danger-text 4.0:1, both under the 4.5:1 this 12px copy
+   needs, while --text-primary reads 15.3:1 in light and 13.1:1 in dark. The red
+   affordance is carried by the tint, the border and the icon. */
 .error-banner {
   display: flex;
   align-items: flex-start;
@@ -128,12 +223,7 @@ h1.login-title {
   border: 1px solid var(--danger);
   border-radius: var(--radius-lg);
   background: var(--danger-soft);
-  /* White, not a rose: measured on the rendered --danger-soft tint (which
-     composites to ~#472f62 over the glass card) --danger-on-dark reads only
-     4.2:1 and light mode's --danger 3.1:1, both under the 4.5:1 that this 12px
-     copy needs. --on-dark measures 11.4:1 there. The red affordance is carried
-     by the tint, the border and the icon instead. */
-  color: var(--on-dark);
+  color: var(--text-primary);
   font-size: var(--text-sm);
   line-height: 1.5;
   animation: banner-in var(--duration-slow) var(--ease-out);
@@ -148,7 +238,7 @@ h1.login-title {
   flex-shrink: 0;
   margin-top: 1px;
   font-size: var(--text-md);
-  color: var(--danger-on-dark);
+  color: var(--danger);
 }
 
 .error-banner-text { flex: 1; }
@@ -169,15 +259,15 @@ h1.login-title {
   cursor: pointer;
   transition: background var(--duration-base) var(--ease-out);
 }
-.error-banner-dismiss:hover { background: var(--glass-on-dark); }
+.error-banner-dismiss:hover { background: var(--surface-2); }
 
 /* ---- Primary CTA ----
    PrimeNG renders <p-button> as a wrapper around <button class="p-button">, so
    the fill and its states are reached through ::ng-deep — the same route the
-   previous revision of this component used. */
+   previous revisions of this component used. */
 :host ::ng-deep .login-cta.p-button {
   width: 100%;
-  height: 44px;
+  height: 48px;
   border: 0;
   border-radius: var(--radius-lg);
   background: var(--gradient-brand-cta);
@@ -201,10 +291,12 @@ h1.login-title {
 }
 
 /* Focus indicator. The outline is the guarantee — PrimeNG's own box-shadow
-   cannot suppress it — and --focus-ring layers the brand halo on top. */
+   cannot suppress it — and it is --text-primary so it contrasts with the panel
+   in both modes. --focus-ring layers the brand halo on top, and its --surface-0
+   gap ring is the reason the token was pointed at the panel surface. */
 :host ::ng-deep .login-cta.p-button:focus-visible,
 .error-banner-dismiss:focus-visible {
-  outline: 2px solid var(--on-dark);
+  outline: 2px solid var(--text-primary);
   outline-offset: 2px;
   box-shadow: var(--focus-ring);
 }
@@ -218,45 +310,96 @@ h1.login-title {
   opacity: 1;
 }
 
-/* ---- Redirect notice ---- */
-.login-notice {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  margin: var(--space-5) 0 0;
+/* ---- Trust line ----
+   --text-secondary, not the --text-tertiary the spec named: tertiary measures
+   2.56:1 on white and 2.47:1 on the dark sheet, both failing the 4.5:1 that
+   12px copy needs, while secondary reads 4.76:1 and 7.3:1. */
+.action-trust {
+  margin: var(--space-4) 0 0;
   font-size: var(--text-sm);
   line-height: 1.5;
-  /* Without this the sentence breaks after "sign-in" and orphans "page." onto a
-     second line at desktop width. Balances it to two even lines instead.
-     Browsers that predate the property just fall back to normal wrapping. */
-  text-wrap: balance;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+/* ---- Footer ---- */
+.login-footer {
+  position: fixed;
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  /* Never swallows a click aimed at the window on a short viewport. */
+  pointer-events: none;
+  font-size: var(--text-sm);
   color: var(--on-dark-muted);
 }
 
-/* ---- Responsive (brief 4: 32 / 24 / 16px content padding) ---- */
+/* =============================================================================
+   Responsive
+   ============================================================================= */
+
+/* Tablet: even columns, window inset by 32px rather than 64px. */
 @media (max-width: 1023px) {
-  .login-card { padding: var(--space-7) var(--space-6); }
+  /* Halve the side gutters too, so the window's `100vw - 32px` is actually
+     reachable: at the desktop 24px gutters the flex line clamped it to
+     `100vw - 48px` (measured 720px instead of 736px at a 768px viewport). */
+  .login-viewport { padding-inline: var(--space-4); }
+  .login-window {
+    grid-template-columns: 50% 50%;
+    width: calc(100vw - var(--space-7));
+  }
+  .login-brand-panel,
+  .login-action-panel { padding: var(--space-7); }
+  .tagline { font-size: var(--text-3xl); }
 }
 
+/* Mobile: one column. The brand panel collapses to a 160px banner carrying
+   only the logo mark, and the action panel becomes the whole card. */
 @media (max-width: 767px) {
-  .login-container { padding: var(--space-3); }
-  .login-card {
+  /* Drop the 55% offset — a single stacked column reads better centred. */
+  .login-viewport { padding: var(--space-5); }
+
+  .login-window {
+    grid-template-columns: 100%;
+    grid-template-rows: auto 1fr;
     width: 100%;
-    max-width: calc(100vw - var(--space-6));
-    padding: var(--space-6) var(--space-5);
   }
-  .blob-indigo { width: 380px; height: 380px; }
-  .blob-cyan { width: 320px; height: 320px; }
+
+  .login-brand-panel {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    height: 160px;
+    padding: var(--space-5);
+  }
+  .wordmark,
+  .tagline,
+  .brand-art { display: none; }
+
+  .login-action-panel {
+    padding: var(--space-6);
+    border-left: 0;
+    border-top: 1px solid var(--border-subtle);
+    border-radius: 0 0 var(--radius-2xl) var(--radius-2xl);
+  }
+}
+
+/* Short viewports: the rings are the first thing to go, so the tagline and the
+   CTA keep their room. Below ~616px of window height the three brand blocks no
+   longer fit the panel's padding box. */
+@media (max-height: 640px) {
+  .brand-art { display: none; }
 }
 
 /* ---- Reduced motion (brief 6) ---- */
 @media (prefers-reduced-motion: reduce) {
   .blob,
-  .login-card,
+  .login-window,
+  .brand-art,
   .error-banner { animation: none; }
 
-  .login-card { opacity: 1; transform: none; }
+  .login-window { opacity: 1; transform: none; }
 
   :host ::ng-deep .login-cta.p-button:enabled:hover { transform: none; }
 }

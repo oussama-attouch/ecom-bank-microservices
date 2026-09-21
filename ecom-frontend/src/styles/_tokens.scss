@@ -51,34 +51,25 @@
   --on-dark-muted: rgba(255, 255, 255, 0.6);
   --shadow-hero: 0 24px 64px rgba(0, 0, 0, 0.4);
 
-  /* ---- On-dark interactive states (login hero — brief 5.7) ----
-     The hero canvas is --gradient-hero, which is permanently dark in both
-     modes for the same reason the sidebar is (brief 5.1), so anything drawn on
-     it needs the dark column's value in light mode too. None of these three
-     introduces a colour that is not already in this file:
+  /* ---- Login interactive states (brief 5.7) ----
+     None of these introduces a colour that is not already in this file:
 
-       --focus-ring      composes --on-dark and --brand-primary. A brand-primary
-                         ring on the glass card measures only ~2.2:1, below the
-                         3:1 that WCAG 2.4.11 / 1.4.11 requires of a focus
-                         indicator; the 2px white inner ring measures 12.5:1 and
-                         is what actually carries the requirement.
-       --danger-on-dark  the value .app-dark already gives --danger, used for
-                         the error banner's warning icon. Measured against the
-                         rendered --danger-soft tint it reads 4.2:1, clearing
-                         the 3:1 that WCAG 1.4.11 asks of a non-text
-                         indicator, where light mode's #f43f5e reads 3.1:1.
-                         The banner's *text* is --on-dark rather than either
-                         rose: neither clears the 4.5:1 that 12px copy needs on
-                         that tint (measured 4.2:1 and 3.1:1), and white reads
-                         11.4:1.
+       --focus-ring      composes --surface-0 and --brand-primary. A
+                         brand-primary ring alone on the split-screen window
+                         measures only ~2.2:1, below the 3:1 that WCAG 2.4.11 /
+                         1.4.11 requires of a focus indicator, so it needs a
+                         solid gap ring in front of it. That gap is --surface-0
+                         rather than --on-dark because 5.7's action panel *is*
+                         --surface-0: a white gap would vanish on it in light
+                         mode. --surface-0 has a value in both modes, so the gap
+                         always matches the surface the ring is drawn on.
        --gradient-brand-cta  both stops are already inside --gradient-brand.
                          White text on the full ramp measures 2.4:1 at its cyan
                          end and 4.2:1 even at a button's centre, so
                          text-bearing brand fills use this shorter ramp
                          (7.4:1 -> 5.9:1). --gradient-brand itself is unchanged
                          for the sidebar, the avatar ring and non-text fills. */
-  --focus-ring: 0 0 0 2px var(--on-dark), 0 0 0 5px var(--brand-primary);
-  --danger-on-dark: #fb7185;
+  --focus-ring: 0 0 0 2px var(--surface-0), 0 0 0 5px var(--brand-primary);
   --gradient-brand-cta: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
 
   /* ---- 12%-opacity semantic fills — brief 5.5 badge pattern ---- */
@@ -128,6 +119,7 @@
   --text-xl: 24px;    /* page title, h2 (brief 3) */
   --text-2xl: 28px;   /* hero / login title (brief 5.7) */
   --text-3xl: 32px;   /* KPI number (brief 3) */
+  --text-4xl: 40px;   /* login brand tagline (brief 5.7) */
 
   --weight-regular: 400;
   --weight-medium: 500;
@@ -147,6 +139,7 @@
   --radius-md: 8px;      /* chart tooltips (brief 5.8) */
   --radius-lg: 10px;     /* buttons, inputs, nav items (brief 4 / 5.1) */
   --radius-xl: 14px;     /* cards (brief 4) */
+  --radius-2xl: 24px;    /* window (brief 5.7) */
   --radius-pill: 999px;  /* pagination (brief 5.4) */
   --radius-full: 50%;    /* avatar (brief 4) */
 
