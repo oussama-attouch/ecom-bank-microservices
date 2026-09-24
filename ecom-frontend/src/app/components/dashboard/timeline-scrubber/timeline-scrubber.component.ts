@@ -105,11 +105,30 @@ export class TimelineScrubberComponent implements OnInit, OnDestroy {
   /**
    * The instant the operator scrubbed to, or null to return to live.
    *
-   * Debounced: see {@link DRAG_DEBOUNCE_MS}. Named `change` as the brief
-   * specifies; it is a component output, so it does not collide with the DOM
-   * event of the same name on the inner input.
+   * Debounced: see {@link DRAG_DEBOUNCE_MS}.
+   *
+   * <h2>Why this is `scrub` and not `change`</h2>
+   * It was `change`, as the original brief specified, and that name was a bug.
+   * `change` is a <em>native DOM event</em>, and this component wraps an
+   * `<input type="range">`: when the input fires its own `change`, the event
+   * bubbles up to this component's host element, where Angular delivers it to
+   * the same `(change)` binding as the output. The dashboard therefore received a
+   * DOM `Event` where it expected a `Date` on every interaction — including ones
+   * that never went through the debounce, because the native path bypasses
+   * {@link sliderValue} and its `ready` guard entirely.
+   *
+   * <p>What that looked like downstream was two unrelated-looking bugs: the
+   * instant was junk, so the URL builder threw and <em>no</em> request was issued,
+   * leaving the browser-computed AUM and Active Accounts cards on their previous
+   * live values while the server-driven cards, whose payload had just been
+   * cleared, read "No data".
+   *
+   * <p>`stopPropagation()` on the inner input would also have worked, and is a
+   * landmine: it makes the component's correctness depend on a listener in its
+   * own template that a later editor has no reason to preserve. An output name
+   * that is not also a DOM event name cannot regress that way.
    */
-  @Output() readonly change = new EventEmitter<Date | null>();
+  @Output() readonly scrub = new EventEmitter<Date | null>();
 
   /** Slider position in epoch milliseconds; the DOM value is derived from it. */
   selectedMs: number | null = null;
@@ -134,7 +153,7 @@ export class TimelineScrubberComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.dragSub = this.drags
       .pipe(debounceTime(DRAG_DEBOUNCE_MS), distinctUntilChanged())
-      .subscribe((ms) => this.change.emit(new Date(ms)));
+      .subscribe((ms) => this.scrub.emit(new Date(ms)));
     this.reposition();
   }
 
@@ -174,7 +193,7 @@ export class TimelineScrubberComponent implements OnInit, OnDestroy {
     // Emitted directly rather than through the debounce: this is a discrete
     // action, and waiting 300ms to stop showing a stale instant is a pause the
     // operator would read as the button not working.
-    this.change.emit(null);
+    this.scrub.emit(null);
   }
 
   /** Re-clamps the handle and recomputes whether the control can be used. */

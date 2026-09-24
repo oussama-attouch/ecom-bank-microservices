@@ -24,7 +24,7 @@ describe('TimelineScrubberComponent', () => {
     const fixture = TestBed.createComponent(TimelineScrubberComponent);
     const component = fixture.componentInstance;
     const emitted: (Date | null)[] = [];
-    component.change.subscribe((value) => emitted.push(value));
+    component.scrub.subscribe((value) => emitted.push(value));
     component.earliest = earliest;
     component.latest = latest;
     component.ngOnInit();
@@ -122,4 +122,44 @@ describe('TimelineScrubberComponent', () => {
     expect(component.live).toBe(true);
     expect(component.selectedMs).toBe(LATEST.getTime());
   });
+
+  /**
+   * The output carries Dates, and only Dates.
+   *
+   * Part of the regression that shipped as two bugs: the output used to be named
+   * `change`, which is also a native DOM event, so the inner range input's own
+   * `change` bubbled to this component's host and Angular delivered it to the
+   * same binding as the output. The dashboard then received a DOM `Event` where
+   * it expected a `Date`.
+   *
+   * The binding side of that is pinned in the dashboard's own spec, where the
+   * collision actually happened; what this pins is that the component never
+   * publishes anything but an instant, so a re-named binding cannot reintroduce
+   * it silently.
+   */
+  it('publishes only Dates, never the native events the inner input bubbles', fakeAsync(() => {
+    const fixture = TestBed.createComponent(TimelineScrubberComponent);
+    const component = fixture.componentInstance;
+    component.earliest = EARLIEST;
+    component.latest = LATEST;
+    const emitted: unknown[] = [];
+    component.scrub.subscribe((value) => emitted.push(value));
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector('#ledger-scrubber') as HTMLInputElement;
+    expect(input).withContext('the slider should render').not.toBeNull();
+
+    // Exactly what a drag or an arrow-key adjustment produces in a real browser.
+    input.value = '10';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    fixture.detectChanges();
+
+    // Still debouncing, and the native `change` above did not leak past it.
+    expect(emitted).toEqual([]);
+
+    tick(DEBOUNCE + 50);
+    expect(emitted.length).toBe(1);
+    expect(emitted[0] instanceof Date).toBe(true);
+  }));
 });

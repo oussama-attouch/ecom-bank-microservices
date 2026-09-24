@@ -121,8 +121,13 @@ export function hasChartData(series: ChartSeries | null): boolean {
   return !!series && (series.dailyVolume?.length ?? 0) + (series.dailyFlow?.length ?? 0) > 0;
 }
 
-/** `YYYY-MM-DD` for a local date: the calendar day the operator is looking at. */
-function isoDay(date: Date): string {
+/**
+ * `YYYY-MM-DD` for a local date: the calendar day the operator is looking at.
+ *
+ * Exported because the caller has to be able to say which day the dashboard is
+ * describing: under the timeline scrubber that is the snapshot's day, not today.
+ */
+export function isoDay(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${date.getFullYear()}-${month}-${day}`;
