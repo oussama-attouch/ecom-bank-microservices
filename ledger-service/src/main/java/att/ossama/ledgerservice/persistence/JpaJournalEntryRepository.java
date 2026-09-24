@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 
@@ -73,6 +74,22 @@ public class JpaJournalEntryRepository implements JournalEntryRepository {
     public List<JournalEntry> findByAccount(String accountId) {
         return repository.findByDebitAccountIdOrCreditAccountId(accountId, accountId).stream()
                 .sorted(Comparator.comparing(JournalEntryEntity::getCreatedAt))
+                .map(this::toDomain)
+                .toList();
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Overridden rather than left to the seam's filter-{@code findAll()} default:
+     * this is an index range on {@code created_at} that never reads past the
+     * cutoff, where the default would load all 49,911 postings to answer a
+     * question about their prefix — on every step of a scrubber drag.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<JournalEntry> findAllBefore(Instant cutoff) {
+        return repository.findByCreatedAtLessThanEqualOrderByCreatedAtDescIdDesc(cutoff).stream()
                 .map(this::toDomain)
                 .toList();
     }

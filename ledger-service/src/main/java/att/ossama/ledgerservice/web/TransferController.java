@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -23,10 +24,13 @@ public class TransferController {
 
     private final TransferSagaService sagaService;
     private final SagaRepository sagaRepository;
+    private final AtParam atParam;
 
-    public TransferController(TransferSagaService sagaService, SagaRepository sagaRepository) {
+    public TransferController(TransferSagaService sagaService, SagaRepository sagaRepository,
+                              AtParam atParam) {
         this.sagaService = sagaService;
         this.sagaRepository = sagaRepository;
+        this.atParam = atParam;
     }
 
     @PostMapping("/transfers")
@@ -43,9 +47,18 @@ public class TransferController {
         }
     }
 
+    /**
+     * The saga list, as of {@code at} when it is given.
+     *
+     * <p>A saga has no {@code occurred_at}, so the time bound is
+     * {@code startedAt}: the sagas that had begun by that instant. Their status is
+     * the one they hold now — see {@code SagaRepository.findAllStartedBefore} for
+     * why that is the honest reading rather than a limitation to paper over.
+     */
     @GetMapping("/sagas")
-    public List<SagaState> sagas() {
-        return sagaRepository.findAll();
+    public List<SagaState> sagas(@RequestParam(name = "at", required = false) String at) {
+        Instant asOf = atParam.parse(at);
+        return asOf != null ? sagaRepository.findAllStartedBefore(asOf) : sagaRepository.findAll();
     }
 
     @GetMapping("/sagas/{transactionId}")

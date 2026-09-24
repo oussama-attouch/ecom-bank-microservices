@@ -248,4 +248,14 @@ export interface ChartSeries {
   dailyFlow: ChartFlowPoint[];
   balanceDistribution: ChartAccountBalance[];
   sagaBreakdown: SagaBreakdown;
+  /**
+   * The earliest instant the ledger holds, ISO-8601, or null for an empty log.
+   *
+   * Optional because it is an addition to a payload other code already builds:
+   * a client running ahead of its server simply gets `undefined` and leaves the
+   * timeline scrubber disabled, which is the same state as a ledger with no
+   * history. It rides here rather than on an endpoint of its own because the
+   * scrubber needs it on mount, and the dashboard is already making this call.
+   */
+  historyStart?: string | null;
 }

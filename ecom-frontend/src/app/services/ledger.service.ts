@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { Account, ChartSeries, KpiTrends } from '../models';
+import { atParam, query } from './at-param';
 import { silentWhen } from './http-context.tokens';
 
 @Injectable({ providedIn: 'root' })
@@ -10,9 +11,18 @@ export class LedgerService {
 
   constructor(private http: HttpClient) {}
 
-  /** @param silent background poll — the caller renders the failure itself. */
-  listAccounts(silent = false): Observable<Account[]> {
-    return this.http.get<Account[]>(`${this.base}/accounts`, silentWhen(silent));
+  /**
+   * Every account.
+   *
+   * @param silent background poll — the caller renders the failure itself.
+   * @param at the instant to read as of; omit for live. Under a snapshot this is
+   *   the accounts as they stood then, which is also the source of the browser's
+   *   own Assets Under Management and Active Accounts cards, so those two follow
+   *   the scrubber through this one call.
+   */
+  listAccounts(silent = false, at?: Date | null): Observable<Account[]> {
+    return this.http.get<Account[]>(
+      `${this.base}/accounts${query(atParam(at))}`, silentWhen(silent));
   }
 
   createAccount(customerId: number): Observable<Account> {
@@ -51,9 +61,16 @@ export class LedgerService {
     return this.http.get(`${this.base}/sagas/${transactionId}`, silentWhen(silent));
   }
 
-  /** @param silent background poll — the caller renders the failure itself. */
-  listSagas(silent = false): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/sagas`, silentWhen(silent));
+  /**
+   * The saga list.
+   *
+   * @param silent background poll — the caller renders the failure itself.
+   * @param at the instant to read as of; omit for live. The rows carry the
+   *   sagas' current statuses — the server stores no history of them — so a
+   *   snapshot shows which sagas had started by then and how they stand now.
+   */
+  listSagas(silent = false, at?: Date | null): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/sagas${query(atParam(at))}`, silentWhen(silent));
   }
 
   /**
@@ -67,10 +84,14 @@ export class LedgerService {
    *
    * @param range  one of 7d, 30d, 90d, 1y, all (case-insensitive).
    * @param silent background poll — the caller renders the failure itself.
+   * @param at the instant to anchor the whole grid on; omit for live. The range
+   *   still applies: it selects the window measured back from that instant, and
+   *   the equal window before it that every delta compares against.
    */
-  kpiTrends(range: string, silent = false): Observable<KpiTrends> {
+  kpiTrends(range: string, silent = false, at?: Date | null): Observable<KpiTrends> {
     const token = (range || '').trim().toLowerCase();
-    return this.http.get<KpiTrends>(`${this.base}/dashboard/kpi-trends?range=${token}`, silentWhen(silent));
+    return this.http.get<KpiTrends>(
+      `${this.base}/dashboard/kpi-trends${query(`range=${token}`, atParam(at))}`, silentWhen(silent));
   }
 
   /**
@@ -82,9 +103,13 @@ export class LedgerService {
    *
    * @param range  one of 7d, 30d, 90d, 1y, all (case-insensitive).
    * @param silent background poll — the caller renders the failure itself.
+   * @param at the instant to draw the series as of; omit for live. All four
+   *   panels follow it, including the balance distribution and the saga
+   *   breakdown, which are all-time reads in the live form.
    */
-  getChartSeries(range: string, silent = true): Observable<ChartSeries> {
+  getChartSeries(range: string, silent = true, at?: Date | null): Observable<ChartSeries> {
     const token = (range || '').trim().toLowerCase();
-    return this.http.get<ChartSeries>(`${this.base}/dashboard/chart-series?range=${token}`, silentWhen(silent));
+    return this.http.get<ChartSeries>(
+      `${this.base}/dashboard/chart-series${query(`range=${token}`, atParam(at))}`, silentWhen(silent));
   }
 }

@@ -69,10 +69,7 @@ public class SnapshotService {
      *         future — {@code ApiExceptionHandler} turns this into a 400
      */
     public List<AccountState> snapshotAt(Instant at) {
-        if (at.isAfter(clock.instant())) {
-            throw new IllegalArgumentException(
-                    "Invalid 'at': " + at + " is in the future; the ledger has no state there yet");
-        }
+        requireNotFuture(at, clock);
 
         List<Event> events = eventStore.allEventsBefore(at);
 
@@ -85,6 +82,32 @@ public class SnapshotService {
                         // No history on a snapshot row: see the method javadoc.
                         List.of()))
                 .toList();
+    }
+
+    /**
+     * The one place "an instant the ledger can be read at" is enforced.
+     *
+     * <p>A future instant is rejected rather than answered: the ledger has no
+     * state there, and the honest response to "what did the ledger look like next
+     * year" is a 400, not an empty list that a caller could mistake for "no
+     * accounts existed". It also catches the common typo — a mistyped year, a
+     * seconds/milliseconds mix-up — which would otherwise return today's state
+     * under a future label.
+     *
+     * <p>Public and static because the scrubber's six optional {@code at}
+     * parameters have to reject exactly what this endpoint rejects. They differ in
+     * that their {@code at} is optional and this one's is required, not in what
+     * counts as valid, and two copies of this rule would eventually disagree.
+     *
+     * @throws IllegalArgumentException naming the offending instant, which
+     *         {@code ApiExceptionHandler} turns into a 400
+     */
+    public static Instant requireNotFuture(Instant at, Clock clock) {
+        if (at.isAfter(clock.instant())) {
+            throw new IllegalArgumentException(
+                    "Invalid 'at': " + at + " is in the future; the ledger has no state there yet");
+        }
+        return at;
     }
 
     /**

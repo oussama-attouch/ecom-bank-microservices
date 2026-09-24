@@ -61,6 +61,50 @@ public interface SagaStateJpaRepository extends JpaRepository<SagaStateEntity, S
     List<Object[]> countByStatus();
 
     /**
+     * Saga counts by status, for the sagas that had started by {@code asOf}.
+     *
+     * <p>The breakdown chart under the timeline scrubber. Note what this can and
+     * cannot say: the store keeps only each saga's <em>current</em> status, so a
+     * saga that started before the cutoff and has since completed is counted as
+     * COMPLETED even though it was in flight at the instant asked about. That is
+     * the same honest reading {@link #countProblemStartedBetween} documents —
+     * "started in the window, in the state it is in now" — and reconstructing the
+     * status a saga held mid-flight would need the step log, which this query
+     * deliberately does not join.
+     *
+     * <p>{@code started_at} is nullable, and a saga with no start belongs to no
+     * instant rather than to the beginning of time, so those rows are excluded.
+     */
+    @Query(value = """
+            SELECT status, COUNT(*) FROM saga_states
+            WHERE started_at IS NOT NULL AND started_at <= :asOf
+            GROUP BY status
+            """, nativeQuery = true)
+    List<Object[]> countByStatusStartedBefore(@Param("asOf") Instant asOf);
+
+    /**
+     * Saga headers for the sagas that had started by {@code asOf}, in the same
+     * shape as {@link #findAllHeaders()} and carrying the same caveat: the status
+     * is the saga's current one, not the one it held at the cutoff.
+     *
+     * <p>Steps are omitted for the same reason as the live list — the list view
+     * renders none, and selecting them drags every step row along.
+     */
+    @Query("""
+            SELECT s.transactionId AS transactionId,
+                   s.status AS status,
+                   s.sourceAccountId AS sourceAccountId,
+                   s.destinationAccountId AS destinationAccountId,
+                   s.amount AS amount,
+                   s.startedAt AS startedAt,
+                   s.completedAt AS completedAt,
+                   s.errorMessage AS errorMessage
+            FROM SagaStateEntity s
+            WHERE s.startedAt IS NOT NULL AND s.startedAt <= :asOf
+            """)
+    List<SagaHeader> findAllHeadersStartedBefore(@Param("asOf") Instant asOf);
+
+    /**
      * Sagas started within {@code (from, to]} whose current status is COMPLETED,
      * as a percentage of every saga started in that window.
      *

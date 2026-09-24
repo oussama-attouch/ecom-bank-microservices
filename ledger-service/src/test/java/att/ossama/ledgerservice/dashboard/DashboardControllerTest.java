@@ -2,6 +2,7 @@ package att.ossama.ledgerservice.dashboard;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import att.ossama.ledgerservice.web.ApiExceptionHandler;
+import att.ossama.ledgerservice.web.AtParam;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.test.web.servlet.MockMvc;
@@ -45,7 +46,7 @@ class DashboardControllerTest {
             java.util.Arrays.asList(null, null, null, null, null, null, new BigDecimal("95.20")));
 
     private static MockMvc mockMvc(KpiTrendsResponse response) {
-        return MockMvcBuilders.standaloneSetup(new DashboardController(new StubKpiTrendsService(response), null, Clock.systemUTC())).build();
+        return MockMvcBuilders.standaloneSetup(new DashboardController(new StubKpiTrendsService(response), null, new AtParam(Clock.systemUTC()), Clock.systemUTC())).build();
     }
 
     @Test
@@ -132,7 +133,7 @@ class DashboardControllerTest {
         KpiTrendsResponse response = new KpiTrendsResponse(trend, trend, trend, trend, trend, trend, trend, trend,
                 trend, trend, trend, trend, trend, trend, trend, trend);
         StubKpiTrendsService service = new StubKpiTrendsService(response);
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(new DashboardController(service, null, Clock.systemUTC()))
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new DashboardController(service, null, new AtParam(Clock.systemUTC()), Clock.systemUTC()))
                 .build();
 
         for (String token : List.of("7d", "30d", "90d", "1y", "all")) {
@@ -160,7 +161,7 @@ class DashboardControllerTest {
         KpiTrendsResponse response = new KpiTrendsResponse(null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null);
         MockMvc mvc = MockMvcBuilders
-                .standaloneSetup(new DashboardController(new StubKpiTrendsService(response), null, Clock.systemUTC()))
+                .standaloneSetup(new DashboardController(new StubKpiTrendsService(response), null, new AtParam(Clock.systemUTC()), Clock.systemUTC()))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
 

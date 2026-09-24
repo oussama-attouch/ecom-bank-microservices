@@ -155,11 +155,28 @@ public class JournalService {
     }
 
     public TrialBalance trialBalance() {
-        List<JournalEntry> all = repository.findAll();
+        return total(repository.findAll());
+    }
+
+    /**
+     * The trial balance as it stood at {@code asOf}: the same sum over the
+     * postings up to that instant.
+     *
+     * <p>Delegates to {@link #total(List)} rather than repeating the arithmetic,
+     * so a snapshot's totals are the live totals' own code path. What changes with
+     * the time bound is only which rows are in it, which is the whole of what
+     * "the state at that instant" means for a pair of running totals.
+     */
+    public TrialBalance trialBalanceAt(Instant asOf) {
+        return total(repository.findAllBefore(asOf));
+    }
+
+    /** The one place a trial balance is summed, live or as of an instant. */
+    private TrialBalance total(List<JournalEntry> entries) {
         double debits = 0;
         double credits = 0;
         boolean allValid = true;
-        for (JournalEntry e : all) {
+        for (JournalEntry e : entries) {
             debits += e.getAmount();
             credits += e.getAmount();
             if (!e.isValid()) {
@@ -207,6 +224,19 @@ public class JournalService {
 
     public List<JournalEntry> entries() {
         return repository.findAll();
+    }
+
+    /**
+     * The postings up to {@code asOf}, newest first — the journal explorer's feed
+     * under the timeline scrubber.
+     *
+     * <p>Ordered the same way as {@link #entries()}, because the controller pages
+     * this list by taking a {@code subList} off the front: a snapshot that came
+     * back oldest-first would serve the operator the ledger's opening week instead
+     * of the days before the instant they dragged to.
+     */
+    public List<JournalEntry> entriesBefore(Instant asOf) {
+        return repository.findAllBefore(asOf);
     }
 
     public List<JournalEntry> entriesForTransaction(String transactionId) {

@@ -88,6 +88,26 @@ public class ChartSeriesService {
     /** The series for {@code requested}, which must be one of the known tokens. */
     @Transactional(readOnly = true)
     public ChartSeries series(String requested, Instant now) {
+        return series(requested, now, null);
+    }
+
+    /**
+     * The same series, with the two range-independent panels read as of
+     * {@code asOf} instead of all-time.
+     *
+     * <p>The daily volume and flow series need nothing extra: they are already
+     * bounded by {@code (from, now]}, so anchoring {@code now} on a past instant
+     * moves them. The other two panels were the problem — {@link #topAccounts()}
+     * and {@link #breakdown()} were all-time reads with no time predicate at all,
+     * so under a scrubber they would have gone on showing today's ten largest
+     * balances and today's saga counts beside a historical volume chart. Reading
+     * them as of the cutoff is what makes the whole card grid describe one instant.
+     *
+     * @param asOf the instant to read the distribution and saga panels as of, or
+     *        {@code null} for the live all-time read
+     */
+    @Transactional(readOnly = true)
+    public ChartSeries series(String requested, Instant now, Instant asOf) {
         Range range = Range.parse(requested);
         Instant from = range.lookback() == null ? Instant.EPOCH : now.minus(range.lookback());
 
@@ -101,7 +121,8 @@ public class ChartSeriesService {
             flow.add(new ChartSeries.DailyFlow((String) row[0], (BigDecimal) row[1], (BigDecimal) row[2]));
         }
 
-        return new ChartSeries(range.token(), volume, flow, topAccounts(), breakdown());
+        return new ChartSeries(range.token(), volume, flow, topAccounts(asOf), breakdown(asOf),
+                events.findEarliestOccurredAt());
     }
 
     /**
@@ -110,9 +131,15 @@ public class ChartSeriesService {
      * <p>Reuses the account summary aggregate the accounts list already runs, and
      * sorts in Java: the list is one row per account, so ordering it here costs
      * nothing next to a second pass over the event log.
+     *
+     * <p>As of {@code asOf} when given, which is a different query: the live
+     * aggregate has no time predicate, and adding a nullable one to it would make
+     * every 5s poll pay for a bound it never uses.
      */
-    private List<ChartSeries.AccountBalance> topAccounts() {
-        List<AccountSummaryRow> rows = events.accountSummaries();
+    private List<ChartSeries.AccountBalance> topAccounts(Instant asOf) {
+        List<AccountSummaryRow> rows = asOf == null
+                ? events.accountSummaries()
+                : events.accountSummariesAsOf(asOf);
         return rows.stream()
                 .filter(row -> row.getBalance() != null)
                 .sorted(Comparator.comparing(AccountSummaryRow::getBalance).reversed())
@@ -121,11 +148,22 @@ public class ChartSeriesService {
                 .toList();
     }
 
-    private ChartSeries.SagaBreakdown breakdown() {
+    /**
+     * Saga counts by status, over every saga or over the ones that had started by
+     * {@code asOf}.
+     *
+     * <p>Under a scrubber the statuses are the sagas' current ones — the store
+     * keeps no history of them — so this reads "of the sagas that had started by
+     * then, how do they stand now". See {@code SagaRepository.findAllStartedBefore}.
+     */
+    private ChartSeries.SagaBreakdown breakdown(Instant asOf) {
         long completed = 0;
         long compensating = 0;
         long failed = 0;
-        for (Object[] row : sagas.countByStatus()) {
+        List<Object[]> rows = asOf == null
+                ? sagas.countByStatus()
+                : sagas.countByStatusStartedBefore(asOf);
+        for (Object[] row : rows) {
             String status = (String) row[0];
             long count = ((Number) row[1]).longValue();
             switch (status == null ? "" : status) {
