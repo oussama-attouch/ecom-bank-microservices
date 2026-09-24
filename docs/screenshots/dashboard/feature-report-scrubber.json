@@ -1,0 +1,215 @@
+{
+  "browser": "Chrome/153.0.8010.53",
+  "mode": "scrubber",
+  "outputDir": "docs/screenshots/dashboard",
+  "consoleErrors": [
+    "console.error: [ERROR] 0-ecom-frontend - token '' is not valid --> token falsy",
+    "console.error: [ERROR] 0-ecom-frontend - token '' is not valid --> token falsy",
+    "console.error: [ERROR] 0-ecom-frontend - token '' is not valid --> token falsy"
+  ],
+  "liveKpis": [
+    {
+      "label": "Assets Under Management",
+      "value": "$19,309,159.80",
+      "trend": "+2.39%From previous 30d",
+      "dot": null
+    },
+    {
+      "label": "Active Accounts",
+      "value": "1,115",
+      "trend": "+4.21%From previous 30d",
+      "dot": null
+    },
+    {
+      "label": "Volume (30d)",
+      "value": "$5,241,509.69",
+      "trend": "+37.60%From previous 30d",
+      "dot": null
+    },
+    {
+      "label": "Problem Sagas",
+      "value": "19",
+      "trend": "+18.75%From previous 30d",
+      "dot": "missed"
+    },
+    {
+      "label": "Net Cash Flow (30d)",
+      "value": "$450,130.05",
+      "trend": "-2.51%From previous 30d",
+      "dot": null
+    },
+    {
+      "label": "Avg Transaction Value (30d)",
+      "value": "$659.64",
+      "trend": "+1.89%From previous 30d",
+      "dot": null
+    },
+    {
+      "label": "Balance Concentration (Top 10)",
+      "value": "32.23%",
+      "trend": "0.00%From last week",
+      "dot": "met"
+    },
+    {
+      "label": "Large Transfers (30d, >$10K)",
+      "value": "29",
+      "trend": "+93.33%From previous 30d",
+      "dot": null
+    },
+    {
+      "label": "Saga Success Rate",
+      "value": "95.13%",
+      "trend": "+0.49%From previous 30d",
+      "dot": "met"
+    },
+    {
+      "label": "Avg Saga Duration",
+      "value": "555 ms",
+      "trend": "+6.51%From previous 30d",
+      "dot": null
+    },
+    {
+      "label": "P95 Saga Duration",
+      "value": "802 ms",
+      "trend": "+0.87%From previous 30d",
+      "dot": "met"
+    },
+    {
+      "label": "Compensation Rate",
+      "value": "4.87%",
+      "trend": "-8.63%From previous 30d",
+      "dot": "met"
+    },
+    {
+      "label": "Saga–Journal Reconciliation",
+      "value": "31.98%",
+      "trend": "-0.93%From previous 30d",
+      "dot": "missed"
+    },
+    {
+      "label": "Anomaly Rate (3σ)",
+      "value": "0.83%",
+      "trend": "+9.21%From previous 30d",
+      "dot": "met"
+    },
+    {
+      "label": "Audit Trail Completeness",
+      "value": "100.00%",
+      "trend": "0.00%From previous 30d",
+      "dot": "met"
+    },
+    {
+      "label": "Dashboard SLA (>95%)",
+      "value": "22.5%",
+      "trend": "—From previous 24h",
+      "dot": "missed"
+    }
+  ],
+  "rebuildButtonPresent": true,
+  "scrub": {
+    "rangeMinutes": 1041899,
+    "earliestMs": 1727754696796,
+    "requestedStep": 330155,
+    "max": 1041899,
+    "label": "May 18, 2025 11:26",
+    "banner": "Viewing snapshot: May 18, 2025 11:26 Return to Live"
+  },
+  "snapshotKpis": [
+    {
+      "label": "Assets Under Management",
+      "value": "$13,634,623.28",
+      "trend": "+1.16%From previous 30d",
+      "dot": null
+    },
+    {
+      "label": "Active Accounts",
+      "value": "192",
+      "trend": "+20.00%From previous 30d",
+      "dot": null
+    },
+    {
+      "label": "Volume (30d)",
+      "value": "$932,007.21",
+      "trend": "-9.61%From previous 30d",
+      "dot": null
+    },
+    {
+      "label": "Problem Sagas",
+      "value": "1",
+      "trend": "—From previous 30d",
+      "dot": "missed"
+    },
+    {
+      "label": "Net Cash Flow (30d)",
+      "value": "$156,739.59",
+      "trend": "-25.03%From previous 30d",
+      "dot": null
+    },
+    {
+      "label": "Avg Transaction Value (30d)",
+      "value": "$2,224.36",
+      "trend": "-19.75%From previous 30d",
+      "dot": null
+    },
+    {
+      "label": "Balance Concentration (Top 10)",
+      "value": "44.18%",
+      "trend": "-0.47%From last week",
+      "dot": "met"
+    },
+    {
+      "label": "Large Transfers (30d, >$10K)",
+      "value": "22",
+      "trend": "+10.00%From previous 30d",
+      "dot": null
+    },
+    {
+      "label": "Saga Success Rate",
+      "value": "96.97%",
+      "trend": "-3.03%From previous 30d",
+      "dot": "met"
+    },
+    {
+      "label": "Avg Saga Duration",
+      "value": "528 ms",
+      "trend": "-2.75%From previous 30d",
+      "dot": null
+    },
+    {
+      "label": "P95 Saga Duration",
+      "value": "745 ms",
+      "trend": "-7.63%From previous 30d",
+      "dot": "met"
+    },
+    {
+      "label": "Compensation Rate",
+      "value": "3.03%",
+      "trend": "—From previous 30d",
+      "dot": "met"
+    },
+    {
+      "label": "Saga–Journal Reconciliation",
+      "value": "37.78%",
+      "trend": "-19.72%From previous 30d",
+      "dot": "missed"
+    },
+    {
+      "label": "Anomaly Rate (3σ)",
+      "value": "1.91%",
+      "trend": "-11.16%From previous 30d",
+      "dot": "missed"
+    },
+    {
+      "label": "Audit Trail Completeness",
+      "value": "100.00%",
+      "trend": "0.00%From previous 30d",
+      "dot": "met"
+    },
+    {
+      "label": "Dashboard SLA (>95%)",
+      "value": "No data",
+      "trend": "—From previous 24h",
+      "dot": null
+    }
+  ]
+}

@@ -188,6 +188,18 @@ OIDC Authorization Code flow with PKCE. JWT validated at the gateway against Key
 
 Three roles — TELLER, MANAGER, AUDITOR — declared declaratively in `realm-export.json`.
 
+### 4.10 Time-Travel — Point-in-Time Snapshot
+
+![Time Travel](docs/screenshots/dashboard/time-travel-scrubber.png)
+
+Drag the scrubber to any past instant and the whole Command Center describes it. Scrub to May 2025 and AUM falls from $19.3M to $13.6M, Active Accounts from 1,115 to 192 — six read endpoints, every one carrying `?at=`. The Dashboard SLA card reads "No data" rather than a fabricated 0%: it is sampled in the JVM's memory, so an instant before the process started has no reading at all.
+
+### 4.11 Dual-Implementation Consistency Check
+
+![Projection Consistency](docs/screenshots/dashboard/projection-rebuild-success.png)
+
+`POST /api/admin/projections/rebuild` computes the same ledger state two independent ways — a Java event replay and a Postgres aggregate — and verifies they agree. On the seeded portfolio ledger: **51,042 events, 1,115 accounts, 0 mismatches.** Nothing is truncated; every read model here is computed on demand, so what the check proves is that the two *computations* agree.
+
 ---
 
 ## 5. Architecture
@@ -213,6 +225,8 @@ Three roles — TELLER, MANAGER, AUDITOR — declared declaratively in `realm-ex
 |---|---|
 | 🎯 **8 microservices** | gateway, discovery, config, customer, inventory, billing, order, ledger |
 | 📚 **Event Sourcing + CQRS** | Append-only event store with projections for reads |
+| ⏱️ **Time-travel queries** | Reconstruct the ledger at any past instant by replaying events up to a cutoff timestamp |
+| ✅ **Dual-implementation consistency check** | Verifies the event-replay projection agrees with the SQL aggregate path across all 1,115 accounts |
 | 🔄 **Saga orchestration** | `VALIDATE → DEBIT_SOURCE → CREDIT_DESTINATION → ARCHIVE`, with ordered compensation |
 | 📒 **Double-entry bookkeeping** | Paired journal entries; trial balance verified on startup |
 | 📨 **Kafka exactly-once semantics** | `acks=all`, `enable.idempotence`, manual ack, DLT for poison messages |

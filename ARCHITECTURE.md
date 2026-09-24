@@ -314,6 +314,103 @@ graph LR
 
 - **The read model that crosses a service boundary is `billing-service`.** `TransactionEventConsumer` consumes `ledger-events` and appends an immutable `ArchivedTransaction` (`transactionId`, `type`, `accountId`, `fromAccountId`, `toAccountId`, `amount`, `timestamp`), deduplicating redeliveries by an in-memory `ConcurrentHashMap` id set — swap for Redis in production, per its own javadoc.
 
+### 4.1 — Time-Travel Queries
+
+The Command Center can describe the ledger at any past instant, not only now. The
+timeline scrubber in the header chooses *when* the dashboard is describing; the
+period selector beside it chooses how wide a window to measure there.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Op as Operator
+    participant TB as TimelineScrubber
+    participant CC as DashboardComponent
+    participant GW as gateway-service
+    participant LS as ledger-service
+    participant ES as JpaEventStore
+    participant DB as event_store
+
+    Op->>TB: drags handle to 2025-05-18T10:27Z
+    Note over TB: 300ms debounce, one-minute steps
+    TB->>CC: scrub(Date)
+    CC->>CC: asOf.set(instant) · stop the 5s poll · clear payloads
+    par six reads, every one carrying ?at=
+        CC->>GW: GET /accounts?at=…
+        CC->>GW: GET /journal/entries?at=…
+        CC->>GW: GET /journal/trial-balance?at=…
+        CC->>GW: GET /sagas?at=…
+        CC->>GW: GET /dashboard/kpi-trends?range=30d&at=…
+        CC->>GW: GET /dashboard/chart-series?range=30d&at=…
+    end
+    GW->>LS: forward (discovery locator strips the /ledger-service prefix)
+    LS->>ES: allEventsBefore(cutoff)
+    ES->>DB: WHERE occurred_at <= :cutoff ORDER BY id
+    DB-->>ES: the prefix of the log
+    ES-->>LS: List<Event>, decoded
+    LS->>LS: AccountProjection.rebuildAllFrom folds each aggregate
+    LS-->>GW: the ledger as it stood at the cutoff
+    GW-->>CC: JSON
+    CC-->>Op: snapshot banner, and values from that instant
+```
+
+- **Only event sourcing can answer "what was true on 15 March?".** A mutable balance column holds one number — today's — and the posting that overwrote yesterday's is the only record of yesterday there ever was. Here the log is append-only and never updated, so every past state is still *in* the data: folding the prefix of the log up to a cutoff reconstructs it exactly. The snapshot is not an approximation or a cached copy, it is the same `fold` (`AccountProjection.rebuildAllFrom`) that the live per-account reads use, so a snapshot balance and a live balance are the same arithmetic by construction rather than two implementations that have to be kept in agreement.
+
+- **Six endpoints accept `?at=<ISO-8601>`,** and they are served by two different mechanisms. `GET /api/ledger/snapshot` and `GET /api/accounts?at=` replay the log through `SnapshotService.snapshotAt`. The other four — `GET /api/journal/entries`, `GET /api/journal/trial-balance`, `GET /api/sagas`, `GET /api/dashboard/kpi-trends` and `GET /api/dashboard/chart-series` — push the cutoff into SQL as a time-bounded aggregate (`occurred_at <= :asOf`), because they were already answering from aggregates and re-reading the whole log to answer them would trade a 200ms query for a replay of 51,000 rows. `at` is parsed by one shared `AtParam`, so an unparseable, zone-less or future value is the same 400 on every route, and absent or blank means live on all of them — a client that predates the feature is unaffected.
+
+- **The one card a snapshot cannot show is the Dashboard SLA**, and it says so rather than inventing a number. The other fifteen KPIs are derived from the log and so exist at every instant; the SLA is measured from this JVM's own request latencies, in memory, with eight days of retention. Every instant before the process started therefore has *no samples*, which is a different thing from a compliance of zero — a zero would claim a total outage that never happened, and paint the card with a red missed-target dot for the whole of history. `KpiTrendsService` returns `null` when `sampleCountBetween` is zero and the card renders "No data" with a dash. The same rule governs the sparkline, which drops the point rather than plotting a zero. See commit `2110f33`.
+
+### 4.2 — Dual-Implementation Consistency Check
+
+`POST /api/admin/projections/rebuild` computes the same ledger state two
+independent ways and checks that they agree.
+
+**A note on the name:** nothing is truncated. There are no materialized read-model
+tables in this service to drop and refill — every read model is computed on demand
+from the event store, so it is already consistent with it by construction. What is
+worth verifying is that the two *computations* of that state agree, which is what
+the endpoint does. The button's tooltip says the same thing, so the UI and this
+document do not disagree about what the operation is.
+
+```mermaid
+flowchart TB
+    BTN["Operator clicks<br/>Rebuild Projections"]
+    EP["POST /api/admin/projections/rebuild<br/>@ConditionalOnProperty<br/>ledger.projection-rebuild.enabled=true"]
+    RB["ProjectionRebuilder.rebuild()<br/>@Transactional readOnly, REPEATABLE_READ"]
+    LOG[("event_store<br/>append-only, never modified")]
+
+    A["Path A — event replay<br/>EventStore.allEvents()<br/>AccountProjection.rebuildAllFrom()<br/>folds double in Java"]
+    B["Path B — SQL aggregate<br/>AccountSummaries.allAccounts()<br/>GROUP BY aggregate_id<br/>sums Postgres numeric"]
+
+    CMP{"per account:<br/>balance within 1e-6<br/>customerId, holderName equal"}
+    OK["consistent: true<br/>0 mismatches"]
+    BAD["consistent: false<br/>mismatchCount + first 20"]
+
+    BTN --> EP --> RB
+    RB --> LOG
+    LOG --> A
+    LOG --> B
+    A --> CMP
+    B --> CMP
+    CMP -->|agree| OK
+    CMP -->|disagree| BAD
+
+    classDef ok fill:#15803d,stroke:#08401f,color:#ffffff
+    classDef bad fill:#b91c1c,stroke:#7f1d1d,color:#ffffff
+    class OK ok
+    class BAD bad
+```
+
+- **There is nothing to drop.** `event_store` is the source of truth and the other three tables are written by the write path, not derived: `journal_entries` and `saga_states`/`saga_steps` cannot be regenerated from the log at all, because it holds only `ACCOUNT_CREATED`, `MONEY_CREDITED` and `MONEY_DEBITED` — no saga transitions, no step names, no `posted_by`, and no compensation descriptions. A truncate-and-replay would destroy data rather than rebuild it. The read models themselves are not tables: `AccountSummaries` answers the account list with one `GROUP BY` and `JpaLedgerAggregates` answers every KPI the same way, so there is no cached copy that could have drifted.
+
+- **Two genuinely independent paths to the same state.** Path A folds the log in Java, accumulating `double` through `AccountProjection`. Path B groups and sums the same rows in Postgres as `numeric`, and the result crosses back through `BigDecimal.doubleValue()`. They share no code below the event store, so agreement is evidence and not a tautology. On the seeded portfolio ledger both are run over **51,042 events and 1,115 accounts, and they agree on every one**, to within the `1e-6` tolerance that exists only because `double` and `numeric` are different arithmetic. The comparison is a set comparison as well as a field-by-field one: an account derived by one path and missing from the other is reported, which a walk over either side alone would silently miss.
+
+- **The verify step deliberately bypasses the convenient accessor.** `AccountProjection.allAccounts()` answers from `AccountSummaries` when they are wired in and falls back to replaying when they are not, so checking through it would compare a replay against itself whenever the summaries are absent and report agreement unconditionally — precisely the failure the check exists to catch. `ProjectionRebuilder` injects `AccountSummaries` directly so the comparison is what it claims to be.
+
+- **This is what makes the CQRS claim testable.** "Balances are derived from the event stream" is an architectural assertion that would otherwise rest on reading the code. Replaying the log and diffing the result against the aggregate turns it into something an operator can run on demand and a reviewer can see the output of — the projection function is not a diagram, it is executable and checked. The same endpoint is a useful integrity probe for a real ledger: a divergence means one of the two paths is wrong and the dashboard's numbers should not be trusted until it is settled, which is why the toast reports it as an error rather than a warning.
+
+- **It is gated off by default.** `ledger.projection-rebuild.enabled=false`, following the same class-level `@ConditionalOnProperty` pattern as the demo hooks: when the flag is off the bean is never created, no handler mapping exists, and the route returns **404** — absent rather than refused. The flag is about who may spend the service's resources, not about an invariant the operation could break, because it breaks none: it is `@Transactional(readOnly = true)` with `REPEATABLE_READ` isolation, and writes nothing. `REPEATABLE_READ` is the correctness detail rather than decoration — under Postgres' default `READ COMMITTED`, a multi-second replay running alongside a live append could fold a log that already contains events the comparison query has not yet seen, and report a divergence that never existed. The stricter isolation gives both paths one snapshot of the log, so a verdict is about the ledger rather than about the timing.
+
 ---
 
 ## 5. Kafka Topic Topology
