@@ -15,6 +15,25 @@ public interface EventJpaRepository extends JpaRepository<EventEntity, Long> {
     /** All events of one aggregate, in the order they were appended. */
     List<EventEntity> findByAggregateIdOrderBySequenceNumber(String aggregateId);
 
+    /**
+     * Every event at or before {@code cutoff}, in log order.
+     *
+     * <p>The one read here that returns events rather than a summary of them, and
+     * the base of the point-in-time snapshot: the projection folds this list to
+     * answer "what did every account look like at that instant".
+     *
+     * <p>{@code <=} is inclusive, following {@link #accountBalancesAsOf(Instant)}
+     * rather than the {@code (from, to]} the range aggregates use — see {@code
+     * EventStore.allEventsBefore}.
+     *
+     * <p>Ordered by {@code id}, the surrogate global log position, and not by
+     * {@code occurredAt}: the seed backdates events, so the two orders differ, and
+     * the projection replays in log order.
+     *
+     * <p>Served by {@code idx_event_store_occurred_at} (V3).
+     */
+    List<EventEntity> findByOccurredAtLessThanEqualOrderByIdAsc(Instant cutoff);
+
     /** Highest sequence number already stored for an aggregate (0 when empty). */
     @Query("SELECT COALESCE(MAX(e.sequenceNumber), 0) FROM EventEntity e WHERE e.aggregateId = :aggregateId")
     Long findMaxSequenceNumberByAggregateId(@Param("aggregateId") String aggregateId);
