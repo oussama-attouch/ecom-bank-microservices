@@ -45,6 +45,38 @@ public interface EventStore {
     /** All events across all accounts, in append order. */
     List<Event> allEvents();
 
+    /**
+     * Every event that had happened at or before {@code cutoff}, in append order.
+     *
+     * <p>The time axis of the log, where {@link #allEvents()} is its position
+     * axis. Inclusive at the boundary: a snapshot "as of" an instant has to
+     * contain the events that happened <em>at</em> it, so this matches the
+     * {@code occurred_at <= :asOf} convention {@code accountBalancesAsOf}
+     * already uses rather than the {@code (from, to]} the range aggregates use.
+     *
+     * <p>Ordered by log position, not by timestamp, and deliberately: the seed
+     * backdates history, so an event's {@code occurredAt} and its insertion order
+     * are different things. The projection replays in log order, so a snapshot
+     * that replayed in timestamp order could fold a debit before the credit that
+     * funded it.
+     *
+     * <p>The default filters {@link #allEvents()}, which is correct but loads the
+     * whole log to answer a question about part of it. Every implementation that
+     * has somewhere cheaper to ask overrides it; the fallback is here so
+     * implementers of this interface are not forced to care about a read they may
+     * never serve.
+     */
+    default List<Event> allEventsBefore(Instant cutoff) {
+        return allEvents().stream()
+                .filter(event -> {
+                    Instant at = event.getOccurredAt();
+                    // An event with no timestamp cannot be placed on the time
+                    // axis at all, so it is not "before" any cutoff.
+                    return at != null && !at.isAfter(cutoff);
+                })
+                .toList();
+    }
+
     /** The ordered event stream for a single account aggregate. */
     List<Event> eventsForAccount(String accountId);
 

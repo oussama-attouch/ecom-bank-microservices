@@ -120,6 +120,23 @@ public class JpaEventStore implements EventStore {
                 .toList();
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Overridden rather than left to the interface's filter-{@code allEvents()}
+     * default: this is a real indexed range on {@code occurred_at} that never
+     * reads past the cutoff, where the default would hydrate and decode the whole
+     * log to answer a question about its prefix. On a cutoff in the distant past
+     * the difference is the entire table.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<Event> allEventsBefore(Instant cutoff) {
+        return repository.findByOccurredAtLessThanEqualOrderByIdAsc(cutoff).stream()
+                .map(this::toEvent)
+                .toList();
+    }
+
     @Override
     @Transactional(readOnly = true)
     public long count() {

@@ -70,6 +70,20 @@ final class SeedLedger implements EventStore {
         return delegate.eventsForAccount(accountId);
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Straight through to the durable log. The balance index this class exists
+     * to maintain is a "now" index — it has no time axis — so a point-in-time read
+     * cannot be answered from it and must not pretend otherwise. Nothing calls
+     * this during a seed; it is delegated so the snapshot behaves identically
+     * whether or not a seed happens to be running.
+     */
+    @Override
+    public List<Event> allEventsBefore(Instant cutoff) {
+        return delegate.allEventsBefore(cutoff);
+    }
+
     @Override
     public long count() {
         return delegate.count();
