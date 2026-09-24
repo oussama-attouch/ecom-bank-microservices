@@ -121,8 +121,25 @@ export interface SagaState {
  * earlier period at all — which the card renders as "—" rather than as 0%.
  */
 export interface KpiTrend {
-  current: number;
-  previous: number;
+  /**
+   * The KPI's value over the selected window, or `null` when the window holds no
+   * measurement at all.
+   *
+   * `null` is not a zero and the card does not print it as one: it renders "No
+   * data". The dashboard-SLA card is the only source that can answer this way —
+   * it is counted in the server's memory, so a window from before the process
+   * started has no samples rather than a compliance of zero. Every other card
+   * reads a store that has been accumulating since the ledger began, where an
+   * empty window really is a zero.
+   */
+  current: number | null;
+  /**
+   * The value over the comparison window, or zero when there is no earlier
+   * period to measure (the `all` range) or nothing was recorded in it.
+   * `deltaPercent` is what carries "no baseline"; this stays a number so the two
+   * cases read the same way.
+   */
+  previous: number | null;
   deltaPercent: number | null;
   /**
    * One point per bucket of the selected range, oldest first, the last being the

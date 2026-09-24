@@ -573,7 +573,9 @@ class KpiTrendsServiceTest {
 
         assertThat(trend.current()).isEqualByComparingTo("75.00");
         // Nothing was recorded in the 24 hours before that, so there is no
-        // baseline to divide by — a dash, not a 0% collapse.
+        // baseline to divide by — a dash, not a 0% collapse. Zero is the payload's
+        // established spelling of "no earlier period" (KpiTrend documents it for
+        // the `all` range too); `deltaPercent` is what carries the absence.
         assertThat(trend.previous()).isEqualByComparingTo("0.00");
         assertThat(trend.deltaPercent()).isNull();
 
@@ -594,6 +596,38 @@ class KpiTrendsServiceTest {
         KpiTrend trend = service.trends().dashboardSlaCompliance();
 
         assertThat(trend.current()).isEqualByComparingTo("50.00");
+    }
+
+    /**
+     * The timeline scrubber's case, and the one that made the bug visible: every
+     * instant before this process started has no samples at all.
+     *
+     * <p>The card used to report that as a red, missed-target <b>0.0%</b> — a
+     * claim of total outage across the whole of history — because
+     * {@code compliancePercentBetween} answers 0 for an empty window and nothing
+     * checked whether the window had been measured. Null is the honest answer,
+     * and the Command Center renders it as "No data" with a dash.
+     */
+    @Test
+    void dashboardSlaReportsNoMeasurementForAWindowWithNoSamples() {
+        // Samples exist now, but nothing was recorded "then".
+        sla.record("kpi-trends", Duration.ofMillis(80));
+
+        KpiTrend live = service.trends().dashboardSlaCompliance();
+        assertThat(live.current()).isEqualByComparingTo("100.00");
+
+        // An instant a year before this process started, which is what the
+        // scrubber asks about.
+        KpiTrend historical = service.trends(KpiRange.ONE_YEAR, NOW.minus(Duration.ofDays(365)))
+                .dashboardSlaCompliance();
+
+        assertThat(historical.current()).isNull();
+        assertThat(historical.previous()).isNull();
+        assertThat(historical.deltaPercent()).isNull();
+        // The card has its own seven-day window whatever the range, and every
+        // point of it is a gap rather than a week of zeroes.
+        assertThat(historical.history()).hasSize(7);
+        assertThat(historical.history()).containsOnlyNulls();
     }
 
     // -----------------------------------------------------------------------
@@ -648,7 +682,12 @@ class KpiTrendsServiceTest {
         assertThat(trends.sagaJournalReconciliation().current()).isEqualByComparingTo("0.00");
         assertThat(trends.anomalyRate().current()).isEqualByComparingTo("0.00");
         assertThat(trends.auditTrailCompleteness().current()).isEqualByComparingTo("0.00");
-        assertThat(trends.dashboardSlaCompliance().current()).isEqualByComparingTo("0.00");
+        // The SLA is the one exception, and not a zero: the other fifteen read a
+        // store that has been accumulating since the ledger began, so an empty
+        // window really is a zero for them. The SLA is counted in this JVM's
+        // memory, so an empty window also means the process was not running —
+        // reporting 0% there claims an outage that never happened.
+        assertThat(trends.dashboardSlaCompliance().current()).isNull();
         assertThat(trends.assetsUnderManagement().deltaPercent()).isNull();
         assertThat(trends.activeAccounts().deltaPercent()).isNull();
         assertThat(trends.todayVolume().deltaPercent()).isNull();
