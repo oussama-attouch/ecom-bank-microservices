@@ -79,6 +79,20 @@ public class JpaSagaRepository implements SagaRepository {
         return repository.findAllHeaders().stream().map(this::toDomain).toList();
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Overridden rather than left to the seam's filter-{@code findAll()}
+     * default: the bounded form is a predicate the database applies, so the
+     * scrubber does not pull all 2,765 saga headers into the service to discard
+     * most of them.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<SagaState> findAllStartedBefore(Instant cutoff) {
+        return repository.findAllHeadersStartedBefore(cutoff).stream().map(this::toDomain).toList();
+    }
+
     @Override
     @Transactional(readOnly = true)
     public long count() {

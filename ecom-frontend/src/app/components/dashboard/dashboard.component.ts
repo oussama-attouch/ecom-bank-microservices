@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CardModule } from 'primeng/card';
@@ -13,6 +13,7 @@ import { JournalService } from '../../services/journal.service';
 import { NotificationService } from '../../services/notification.service';
 import { CountUpDirective } from '../../directives/count-up.directive';
 import { KpiSparklineComponent } from '../shared/kpi-sparkline/kpi-sparkline.component';
+import { TimelineScrubberComponent } from './timeline-scrubber/timeline-scrubber.component';
 import {
   deltaText,
   hasTrendPercentage,
@@ -104,14 +105,18 @@ const DEFAULT_RANGE: DashboardRange = '30D';
  * Why a refresh is running, which is what decides the chart-series fetch.
  *
  * The series is the expensive source — 91-708 grouped rows — so "is it worth
- * re-reading?" has a different answer at each of the three moments the
- * dashboard refreshes, and collapsing them into one expression is what broke
- * the range selector: `initialLoad || isPollRange(token)` is false for 90d/1y/all
- * once the first load has landed, so those ranges fetched neither on the click
+ * re-reading?" has a different answer at each of the four moments the dashboard
+ * refreshes, and collapsing them into one expression is what broke the range
+ * selector: `initialLoad || isPollRange(token)` is false for 90d/1y/all once the
+ * first load has landed, so those ranges fetched neither on the click
  * (initialLoad is spent) nor on the poll (the poll skips them) and sat on
  * "No data" forever.
+ *
+ * 'snapshot' is the scrubber arriving or leaving: like a range change it must
+ * always fetch, because the operator has explicitly asked to look at a different
+ * instant and the range-dependent payloads are about to describe the wrong one.
  */
-type RefreshReason = 'initial' | 'range-change' | 'poll';
+type RefreshReason = 'initial' | 'range-change' | 'poll' | 'snapshot';
 
 export interface KpiCard extends TrendSource {
   label: string;
@@ -169,7 +174,7 @@ interface ChartTheme {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, CardModule, TableModule, TagModule, ButtonModule, ChartModule, SelectButtonModule, CountUpDirective, KpiSparklineComponent],
+  imports: [CommonModule, FormsModule, CardModule, TableModule, TagModule, ButtonModule, ChartModule, SelectButtonModule, CountUpDirective, KpiSparklineComponent, TimelineScrubberComponent],
   template: `
     <!-- Glassy Command Center header (brief 8.3) -->
     <div class="page-head">
@@ -189,7 +194,9 @@ interface ChartTheme {
         }
 
         <!-- Period selector. Records the operator's window and drives the chart
-             series: the four charts below re-query chart-series for it. -->
+             series: the four charts below re-query chart-series for it. Under a
+             snapshot it still applies — it picks the window measured back from
+             the scrubbed instant, and the equal window every delta compares to. -->
         <div class="range-picker">
           <p-selectbutton
             [options]="rangeOptions"
@@ -199,10 +206,33 @@ interface ChartTheme {
             size="small"></p-selectbutton>
         </div>
 
-        <!-- Freshness of the 5s poll, so a stalled feed is visible at a glance. -->
-        <span class="updated-ago" [class.pulse]="justRefreshed">Updated {{secondsSinceUpdate}}s ago</span>
+        <!-- Timeline scrubber. Chooses *when* the dashboard is describing, where
+             the selector above chooses how wide a window to measure there. -->
+        <app-timeline-scrubber
+          [earliest]="historyStart"
+          [latest]="now"
+          [value]="asOf()"
+          (change)="onScrub($event)"></app-timeline-scrubber>
+
+        <!-- Freshness of the 5s poll, so a stalled feed is visible at a glance.
+             Hidden under a snapshot: nothing is polling, so "Updated Xs ago"
+             would be reporting the age of a feed that is deliberately frozen. -->
+        @if (!asOf()) {
+          <span class="updated-ago" [class.pulse]="justRefreshed">Updated {{secondsSinceUpdate}}s ago</span>
+        }
       </div>
     </div>
+
+    <!-- Snapshot banner. Above the KPIs, and role="status" so a screen reader
+         announces the mode change rather than leaving a keyboard operator to
+         discover it from the numbers. -->
+    @if (asOf(); as snapshotDate) {
+      <div class="snapshot-banner" role="status">
+        <span class="pulse-dot"></span>
+        <strong>Viewing snapshot:</strong> {{ snapshotDate | date:'MMM d, y HH:mm' }}
+        <button pButton label="Return to Live" (click)="onScrub(null)"></button>
+      </div>
+    }
 
     <!-- KPI cards (brief 5.3) -->
     <div class="kpi-grid">
@@ -442,6 +472,34 @@ interface ChartTheme {
     .updated-ago { font-size: 12px; color: var(--text-tertiary); margin-right: 12px; transition: color 300ms; }
     .updated-ago.pulse { color: var(--success); }
 
+    /* ---- Snapshot banner ----
+       Sits above the KPIs and below the header, so the mode is stated before any
+       of the numbers it qualifies are read. Amber rather than red: a snapshot is
+       a deliberate state, not an error. */
+    .snapshot-banner {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      margin-bottom: var(--space-5);
+      padding: var(--space-3) var(--space-5);
+      border: 1px solid var(--warning);
+      border-radius: var(--radius-xl);
+      background: var(--warning-soft);
+      color: var(--warning-text);
+      font-size: var(--text-md);
+    }
+    .snapshot-banner strong { font-weight: var(--weight-semibold); }
+    /* Pushes the button to the far end of the banner. */
+    .snapshot-banner button { margin-left: auto; }
+    .pulse-dot {
+      flex: none;
+      width: 8px;
+      height: 8px;
+      border-radius: var(--radius-full);
+      background: var(--warning);
+      animation: pulse 2s infinite;
+    }
+
     /* ---- KPI cards (brief 5.3) ----
        Four to a row; the sixteen cards wrap into four rows of four on their own,
        and into two and then one as the viewport narrows (below). */
@@ -655,6 +713,39 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   live = true;
 
+  /**
+   * The instant the dashboard is describing, or null for live.
+   *
+   * A signal rather than a plain field because the template reads it from four
+   * places — the banner, the scrubber binding, the poll gate and the freshness
+   * indicator — and they must all flip in the same render pass. It is also what
+   * {@link refreshAll} reads to decide whether it is describing "now" or "then",
+   * so a stale value here would mean a snapshot fetching live data.
+   */
+  readonly asOf = signal<Date | null>(null);
+
+  /**
+   * Oldest instant the ledger has history for — the scrubber's left end.
+   *
+   * Discovered rather than assumed. Null until the one `range=all` chart-series
+   * read answers, which is the only existing endpoint that reports how far back
+   * the ledger actually goes; the scrubber renders disabled until then rather
+   * than offering a range it cannot honour. Day resolution, because that payload
+   * is grouped by day: the handle cannot reach the opening hours of the first
+   * day, which is a bound on precision rather than a correctness problem.
+   */
+  historyStart: Date | null = null;
+
+  /**
+   * "Now" for the scrubber's right end, captured once.
+   *
+   * Not re-read on every poll: a moving right-hand end would make the handle
+   * drift under the operator's cursor while they are dragging it, and would mean
+   * the same handle position named a different instant from one second to the
+   * next.
+   */
+  readonly now = new Date();
+
   /** Periods in the header selector, in display order. */
   readonly rangeOptions: DashboardRange[] = ['7D', '30D', '90D', '1Y', 'ALL'];
   /** Selected period, restored from localStorage in ngOnInit. */
@@ -778,6 +869,74 @@ export class DashboardComponent implements OnInit, OnDestroy {
   /** The server's token for the selected range. */
   private get rangeToken(): ChartRange {
     return RANGE_TOKEN[this.range];
+  }
+
+  /**
+   * The operator scrubbed to an instant, or asked to return to live.
+   *
+   * Mirrors {@link onRangeChange} deliberately, because it is the same kind of
+   * event: the operator has changed what the dashboard is describing, so the
+   * range-dependent payloads are dropped and re-fetched rather than left to
+   * describe the previous subject. Dropping them to null is what puts the cards
+   * and charts on "No data" for the one round trip instead of showing live
+   * numbers under a snapshot banner.
+   *
+   * <p>The poll is stopped rather than skipped. A snapshot is a frozen instant,
+   * so re-reading it every 5s would return the same bytes forever; leaving the
+   * timer running would also mean a slow response could land after the operator
+   * had scrubbed again, which is the race {@link seriesGeneration} exists to
+   * lose safely. Stopping it removes the race instead of arbitrating it.
+   *
+   * @param at the instant to view, or null for live
+   */
+  onScrub(at: Date | null): void {
+    // Re-selecting the instant already shown is a no-op: the scrubber debounces
+    // a drag, and a drag that ends where it started should not cost six reads.
+    const current = this.asOf();
+    const same = current === null ? at === null : at !== null && at.getTime() === current.getTime();
+    if (same) return;
+
+    this.asOf.set(at);
+    this.seriesGeneration++;
+    this.chartSeries = null;
+    this.trends = null;
+    // A snapshot has no "now" to be fresh relative to, so the clock is reset
+    // behind it; on the way back to live this restarts the count from the
+    // refresh that is about to run.
+    this.lastLoadedAt = new Date();
+    this.secondsSinceUpdate = 0;
+
+    if (at === null) {
+      this.startTimer();
+    } else {
+      this.stopTimer();
+    }
+
+    this.refreshAll('snapshot');
+  }
+
+  /**
+   * Learn how far back the ledger goes, from the chart-series payload the
+   * dashboard is already fetching — the scrubber's left end.
+   *
+   * <p>Deliberately not a request of its own. The obvious implementation was a
+   * one-off `range=all` chart-series call on mount, and it is a bad trade: that
+   * endpoint's cost is dominated by the balance-distribution aggregate, which is
+   * range-independent and computed for every range anyway, so a second call
+   * doubles the dashboard's most expensive read — measured at ~740ms — purely to
+   * learn one date. Riding on the payload costs one indexed `MIN(occurred_at)`
+   * server-side and no extra round trip.
+   *
+   * <p>Only ever set once. The earliest event in an append-only log cannot move,
+   * and re-stamping the bound on every 5s poll would make the slider's left end
+   * drift under a snapshot the operator is holding.
+   */
+  private adoptHistoryStart(series: ChartSeries | null): void {
+    if (this.historyStart || !series?.historyStart) return;
+    const oldest = new Date(series.historyStart);
+    if (!Number.isNaN(oldest.getTime())) {
+      this.historyStart = oldest;
+    }
   }
 
   /** Stored period, or the 30D default when it is absent or no longer offered. */
@@ -966,29 +1125,39 @@ export class DashboardComponent implements OnInit, OnDestroy {
       });
 
     const token = this.rangeToken;
+    // A range change and a scrub are explicit operator intent and always fetch;
+    // a poll only re-reads the ranges cheap enough for a 5s cadence.
     const fetchRange = reason !== 'poll' || isPollRange(token);
     const generation = this.seriesGeneration;
+    // The one instant every source is asked about, so a snapshot cannot end up
+    // with four cards describing one moment and two describing another. Null
+    // (live) drops the parameter from each URL entirely.
+    const asOf = this.asOf();
 
     forkJoin({
       // `silent` keeps the global error interceptor out of the loop: this runs
       // on a 5s timer, so an outage must be announced once, not once per poll.
-      accounts: this.ledger.listAccounts(true).pipe(guard<Account[]>('accounts')),
-      entries: this.journal.entries(undefined, 200, true).pipe(guard<JournalEntry[]>('transaction feed')),
-      trial: this.journal.trialBalance(true).pipe(guard<TrialBalance>('trial balance')),
-      sagas: this.ledger.listSagas(true).pipe(guard<any[]>('sagas')),
+      //
+      // Every source takes `asOf`: under a snapshot the whole dashboard has to
+      // describe one instant, and a card left reading "now" beside fifteen
+      // reading "then" is worse than not offering the feature.
+      accounts: this.ledger.listAccounts(true, asOf).pipe(guard<Account[]>('accounts')),
+      entries: this.journal.entries(undefined, 200, true, asOf).pipe(guard<JournalEntry[]>('transaction feed')),
+      trial: this.journal.trialBalance(true, asOf).pipe(guard<TrialBalance>('trial balance')),
+      sagas: this.ledger.listSagas(true, asOf).pipe(guard<any[]>('sagas')),
       // Every KPI card's history half (brief 5.3), for the selected range: the
       // server computes each windowed KPI over it, which is what makes clicking
       // a range recompute the sixteen cards and not only the four charts.
       // Isolated like every other source: if it fails the values still render
       // and the trends read as a dash.
       trends: fetchRange
-        ? this.ledger.kpiTrends(token, true).pipe(guard<KpiTrends>('kpi trends'))
+        ? this.ledger.kpiTrends(token, true, asOf).pipe(guard<KpiTrends>('kpi trends'))
         : of<KpiTrends | null>(null),
       // Everything the four charts draw, for the selected range (brief 5.8).
       // `of(null)` keeps forkJoin's shape stable without issuing a request, and
       // marks the answer as "not fetched" so it cannot blank the series.
       series: fetchRange
-        ? this.ledger.getChartSeries(token, true).pipe(guard<ChartSeries>('chart series'))
+        ? this.ledger.getChartSeries(token, true, asOf).pipe(guard<ChartSeries>('chart series'))
         : of<ChartSeries | null>(null)
     }).subscribe({
       next: ({ accounts, entries, trial, sagas, trends, series }) => {
@@ -1012,6 +1181,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
         this.computeKpis();
         this.rebuildChartsIfChanged(this.chartSeries);
+        this.adoptHistoryStart(this.chartSeries);
         this.updateFeed();
         this.raiseProblemSagaNotifications();
         this.reportFailures(failed);
@@ -1406,6 +1576,21 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   toggleLive(): void {
     this.live = !this.live;
+    // Under a snapshot the feed's Live/Paused toggle is already moot — the poll
+    // is stopped by onScrub — so resuming it here would quietly start polling
+    // live data into a dashboard that is presenting a frozen instant. The
+    // operator's route back is Return to Live, which restarts the timer.
+    if (this.asOf()) {
+      if (this.live) {
+        this.msg.add({
+          severity: 'info',
+          summary: 'Snapshot mode',
+          detail: 'Return to Live to resume the feed.',
+          life: 4000
+        });
+      }
+      return;
+    }
     this.live ? this.startTimer() : this.stopTimer();
   }
 

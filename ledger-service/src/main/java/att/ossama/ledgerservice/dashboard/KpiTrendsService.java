@@ -168,7 +168,40 @@ public class KpiTrendsService {
 
     /** The sixteen Command Center KPI trends, in the order the cards are rendered. */
     public KpiTrendsResponse trends(KpiRange range) {
-        Instant now = clock.instant();
+        return trends(range, clock.instant());
+    }
+
+    /**
+     * The same sixteen trends, anchored on {@code asOf} instead of now — the
+     * Command Center under the timeline scrubber.
+     *
+     * <p>This is the whole of the time-travel support the KPI pipeline needs, and
+     * the reason is structural rather than lucky: every aggregate underneath reads
+     * a {@link MeasureSpan}, whose {@code to} <em>is</em> "now". Both comparison
+     * windows, the sparkline axis and the cumulative level readings are all derived
+     * from this one instant, so anchoring them on a past one moves the entire
+     * sixteen-card grid coherently — the selected window, the window before it,
+     * and the standing totals all become "as they were then" together.
+     *
+     * <p>Under a snapshot, "the previous period" therefore means the period before
+     * the instant scrubbed to, not the period before today. That is the reading
+     * that makes the delta meaningful: it is still a like-for-like comparison of two
+     * equal windows, just of two older ones.
+     *
+     * <h2>The one card that cannot follow</h2>
+     * {@code dashboardSlaCompliance} is measured in this JVM by {@link
+     * SlaMetricsService}, whose hourly buckets begin when the process started and
+     * are retained for eight days. There is no record of what latency was on an
+     * arbitrary past date — the data never existed — so for a past {@code asOf}
+     * that service answers "no samples", and the card reports a level with no
+     * baseline rather than a fabricated percentage. This is a real gap in snapshot
+     * mode and is left visible on purpose: inventing a number here would be worse
+     * than showing that the measurement does not reach back that far.
+     *
+     * @param asOf the instant to read the ledger as of; must be in the past
+     */
+    public KpiTrendsResponse trends(KpiRange range, Instant asOf) {
+        Instant now = asOf;
         Instant from = range.from(now);
         Instant previousFrom = range.previousFrom(now);
         // A sparkline point is a calendar bucket, so the axis is built in the
