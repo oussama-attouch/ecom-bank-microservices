@@ -276,3 +276,37 @@ export interface ChartSeries {
    */
   historyStart?: string | null;
 }
+
+/**
+ * Result of `POST /api/admin/projections/rebuild`: the event log replayed and
+ * checked against the read models the dashboard is served from.
+ *
+ * `consistent` is the field that matters. This service materializes no read
+ * models — the account list and every KPI are computed on demand from the event
+ * store — so a rebuild has nothing to truncate and refill; what it can do is fold
+ * the log independently and see whether the answer agrees with what the dashboard
+ * is showing. `false` therefore does not mean the operation failed. It means the
+ * two computations disagree, which means the numbers on this screen are wrong.
+ *
+ * The endpoint is gated off by default, so a caller may instead get a 404: the
+ * route is not registered at all unless the service was started with
+ * `--ledger.projection-rebuild.enabled=true`.
+ */
+export interface ProjectionRebuildReport {
+  /** How many events were folded, in log order. */
+  eventsProcessed: number;
+  /** Wall time for the replay and the comparison together. */
+  elapsedMs: number;
+  /** When the replay started, ISO-8601. */
+  rebuiltAt: string;
+  /** Accounts the replay derived from the log. */
+  accountsRebuilt: number;
+  /** Accounts the live read models returned to compare against. */
+  accountsVerified: number;
+  /** Whether every account matched on identity and balance. */
+  consistent: boolean;
+  /** How many disagreements were found, whether or not they all fit in `mismatches`. */
+  mismatchCount: number;
+  /** Up to twenty disagreements, as text. Capped server-side; the count is not. */
+  mismatches: string[];
+}

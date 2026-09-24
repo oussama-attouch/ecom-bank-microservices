@@ -7,6 +7,7 @@ import { TagModule } from 'primeng/tag';
 import { ButtonModule } from 'primeng/button';
 import { ChartModule } from 'primeng/chart';
 import { SelectButtonModule } from 'primeng/selectbutton';
+import { ProgressBarModule } from 'primeng/progressbar';
 import { MessageService } from 'primeng/api';
 import { LedgerService } from '../../services/ledger.service';
 import { JournalService } from '../../services/journal.service';
@@ -41,7 +42,7 @@ import {
   sum,
   tickStride
 } from './chart-series';
-import { Account, ChartSeries, JournalEntry, KpiTrends, KpiTrend, TrialBalance } from '../../models';
+import { Account, ChartSeries, JournalEntry, KpiTrends, KpiTrend, ProjectionRebuildReport, TrialBalance } from '../../models';
 import { catchError, forkJoin, interval, of, OperatorFunction, Subscription } from 'rxjs';
 
 /** Which of the four trend entries a KPI card reads. */
@@ -175,7 +176,7 @@ interface ChartTheme {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, CardModule, TableModule, TagModule, ButtonModule, ChartModule, SelectButtonModule, CountUpDirective, KpiSparklineComponent, TimelineScrubberComponent],
+  imports: [CommonModule, FormsModule, CardModule, TableModule, TagModule, ButtonModule, ChartModule, SelectButtonModule, ProgressBarModule, CountUpDirective, KpiSparklineComponent, TimelineScrubberComponent],
   template: `
     <!-- Glassy Command Center header (brief 8.3) -->
     <div class="page-head">
@@ -219,6 +220,20 @@ interface ChartTheme {
           [value]="asOf()"
           (scrub)="onScrub($event)"></app-timeline-scrubber>
 
+        <!-- Projection replay: fold the whole event log and check the read models
+             against it. Disabled while it runs, because it is one blocking POST
+             and a second press would only double the cost of a question already
+             asked. Tooltip says what it does rather than leaving "rebuild" to
+             mean whatever the operator assumes — see rebuildProjections(). -->
+        <p-button label="Rebuild Projections"
+                  icon="pi pi-refresh"
+                  severity="secondary"
+                  size="small"
+                  [loading]="rebuilding"
+                  [disabled]="rebuilding"
+                  [title]="rebuildTooltip"
+                  (onClick)="rebuildProjections()"></p-button>
+
         <!-- Freshness of the 5s poll, so a stalled feed is visible at a glance.
              Hidden under a snapshot: nothing is polling, so "Updated Xs ago"
              would be reporting the age of a feed that is deliberately frozen. -->
@@ -227,6 +242,17 @@ interface ChartTheme {
         }
       </div>
     </div>
+
+    <!-- Progress for the projection replay. Indeterminate rather than a
+         percentage, and not by choice: the endpoint is one blocking POST that
+         answers once for the whole fold, so the client has nothing to report
+         until it lands. Sits under the header so it is visible without moving
+         anything else on the page while the replay runs. -->
+    @if (rebuilding) {
+      <p-progressBar mode="indeterminate"
+                     [showValue]="false"
+                     styleClass="rebuild-progress"></p-progressBar>
+    }
 
     <!-- Snapshot banner. Above the KPIs, and role="status" so a screen reader
          announces the mode change rather than leaving a keyboard operator to
@@ -476,6 +502,21 @@ interface ChartTheme {
     /* ---- "Updated Xs ago" ---- */
     .updated-ago { font-size: 12px; color: var(--text-tertiary); margin-right: 12px; transition: color 300ms; }
     .updated-ago.pulse { color: var(--success); }
+
+    /* ---- Projection replay progress ----
+       A 4px indeterminate bar, pulled up under the header's own bottom margin so
+       it reads as attached to it rather than as a new row of the page. The
+       PrimeNG bar renders its own elements, hence the encapsulation-piercing
+       selectors. */
+    .rebuild-progress { display: block; margin: -12px 0 var(--space-5); }
+    :host ::ng-deep .rebuild-progress .p-progressbar {
+      height: 4px;
+      border-radius: var(--radius-pill);
+      background: var(--brand-primary-soft);
+    }
+    :host ::ng-deep .rebuild-progress .p-progressbar-value {
+      background: var(--brand-primary);
+    }
 
     /* ---- Snapshot banner ----
        Sits above the KPIs and below the header, so the mode is stated before any
@@ -773,6 +814,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   /** Sources that failed on the last refresh; drives the "Partial data" badge. */
   failedSources: string[] = [];
+
+  /**
+   * True while a projection replay is in flight.
+   *
+   * Drives the button's spinner, the bar under the header, and the guard that
+   * refuses a second press: the endpoint folds the entire log in one blocking
+   * call, so two at once would cost double to answer a question already being
+   * answered.
+   */
+  rebuilding = false;
 
   readonly skeletonRows = [0, 1, 2, 3, 4];
 
@@ -1628,6 +1679,82 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   isFlash(row: JournalEntry): boolean {
     return !!row.id && this.flashIds.has(row.id);
+  }
+
+  /**
+   * What the Rebuild Projections button actually does, on this service.
+   *
+   * The name overpromises and the tooltip says so rather than letting the
+   * operator assume a truncate-and-refill that never happens: there are no
+   * materialized read models here to drop, so the work is a replay of the whole
+   * log checked against the read models the dashboard is being served from.
+   */
+  get rebuildTooltip(): string {
+    if (this.rebuilding) {
+      return 'Replaying the event log and checking the read models — this takes a few seconds';
+    }
+    return 'Replay every event and verify the read models against it. Nothing is deleted: '
+      + 'this service computes its read models on demand, so the check folds the log again '
+      + 'and compares the result with what the dashboard is being served.';
+  }
+
+  /**
+   * Replay the event log server-side and report whether the read models agree
+   * with it.
+   *
+   * The one operator action that is not a read of dashboard data, so it is
+   * reported differently from everything else here: the result arrives as a
+   * single toast describing what was replayed and what the comparison found,
+   * rather than through the "Partial data" badge, which is about sources that
+   * failed to load.
+   *
+   * A 404 is treated as configuration rather than as a fault. The route is
+   * registered only when the service was started with the gate open, so "not
+   * found" here means "not enabled" and the message says which flag to set.
+   */
+  rebuildProjections(): void {
+    if (this.rebuilding) return;
+    this.rebuilding = true;
+
+    this.ledger.rebuildProjections().subscribe({
+      next: (report) => {
+        this.rebuilding = false;
+        // The server has just recomputed the read models from the log, so re-read
+        // what is on screen rather than leaving numbers that were fetched before
+        // the check ran. A snapshot keeps describing its instant.
+        this.refreshAll(this.asOf() ? 'snapshot' : 'poll');
+        this.msg.add({
+          severity: report.consistent ? 'success' : 'error',
+          summary: report.consistent ? 'Projections verified' : 'Projections diverged',
+          detail: this.rebuildDetail(report),
+          life: report.consistent ? 6000 : 15000
+        });
+      },
+      error: (err: any) => {
+        this.rebuilding = false;
+        this.msg.add({
+          severity: 'error',
+          summary: 'Rebuild failed',
+          detail: err?.status === 404
+            ? 'The endpoint is disabled. Restart ledger-service with '
+              + '--ledger.projection-rebuild.enabled=true to register it.'
+            : 'The replay did not complete — see the ledger-service log for the reason.',
+          life: 15000
+        });
+      }
+    });
+  }
+
+  /** One line for the toast: what was replayed, and what the comparison found. */
+  private rebuildDetail(r: ProjectionRebuildReport): string {
+    const events = r.eventsProcessed.toLocaleString('en-US');
+    const accounts = r.accountsRebuilt.toLocaleString('en-US');
+    const took = r.elapsedMs.toLocaleString('en-US') + ' ms';
+    return r.consistent
+      ? `${events} events replayed across ${accounts} accounts in ${took} — the replay matches the live read models.`
+      : `${events} events replayed across ${accounts} accounts in ${took} — `
+        + `${r.mismatchCount.toLocaleString('en-US')} disagreement(s) with the live read models, `
+        + 'so the numbers on this screen cannot be trusted.';
   }
 
   toggleLive(): void {

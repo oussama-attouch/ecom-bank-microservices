@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Account, ChartSeries, KpiTrends } from '../models';
+import { Account, ChartSeries, KpiTrends, ProjectionRebuildReport } from '../models';
 import { atParam, query } from './at-param';
 import { silentWhen } from './http-context.tokens';
 
@@ -111,5 +111,24 @@ export class LedgerService {
     const token = (range || '').trim().toLowerCase();
     return this.http.get<ChartSeries>(
       `${this.base}/dashboard/chart-series${query(`range=${token}`, atParam(at))}`, silentWhen(silent));
+  }
+
+  /**
+   * Replay the event log and check the read models against it.
+   *
+   * A single blocking request: the server folds the whole log and answers once,
+   * so there is no progress to report while it runs and the caller shows an
+   * indeterminate indicator rather than a percentage. The timeout is the proxy's
+   * 60s for `/ledger-service`, which is far above the couple of seconds the
+   * portfolio ledger takes.
+   *
+   * The failure is `silent` — the caller renders it, and it is worth rendering
+   * specifically: this route is gated off by default, so the likeliest error is a
+   * 404 meaning "not enabled" rather than "broken", and the operator needs to be
+   * told which.
+   */
+  rebuildProjections(): Observable<ProjectionRebuildReport> {
+    return this.http.post<ProjectionRebuildReport>(
+      `${this.base}/admin/projections/rebuild`, {}, silentWhen(true));
   }
 }
