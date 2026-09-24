@@ -36,6 +36,7 @@ import {
   ChartBuckets,
   ChartRange,
   hasChartData,
+  isoDay,
   isPollRange,
   sum,
   tickStride
@@ -207,12 +208,16 @@ interface ChartTheme {
         </div>
 
         <!-- Timeline scrubber. Chooses *when* the dashboard is describing, where
-             the selector above chooses how wide a window to measure there. -->
+             the selector above chooses how wide a window to measure there.
+             Bound to the output named scrub, NOT change: change is a native DOM
+             event that the inner range input bubbles to this component's host,
+             and Angular would deliver that Event to the same binding as the
+             output, poisoning the instant. See TimelineScrubberComponent. -->
         <app-timeline-scrubber
           [earliest]="historyStart"
           [latest]="now"
           [value]="asOf()"
-          (change)="onScrub($event)"></app-timeline-scrubber>
+          (scrub)="onScrub($event)"></app-timeline-scrubber>
 
         <!-- Freshness of the 5s poll, so a stalled feed is visible at a glance.
              Hidden under a snapshot: nothing is polling, so "Updated Xs ago"
@@ -887,9 +892,26 @@ export class DashboardComponent implements OnInit, OnDestroy {
    * had scrubbed again, which is the race {@link seriesGeneration} exists to
    * lose safely. Stopping it removes the race instead of arbitrating it.
    *
+   * <p>Every payload that describes an <em>instant</em> is dropped, not just the
+   * two that describe a range. They are equally wrong under a new instant — the
+   * accounts list is what the browser's own AUM and Active Accounts cards are
+   * computed from — so keeping them would show live numbers under a snapshot
+   * banner for the length of the round trip.
+   *
    * @param at the instant to view, or null for live
    */
   onScrub(at: Date | null): void {
+    // A payload that is neither null nor a Date means the binding has been wired
+    // to something other than this component's output — a native DOM event was
+    // being delivered here once, and it failed silently downstream: the instant
+    // became junk, the URL builder threw, no request was issued, and the
+    // dashboard sat on stale live values under a snapshot banner. Refuse it here,
+    // loudly, rather than letting an unusable instant reach the fetch.
+    if (at !== null && (!(at instanceof Date) || Number.isNaN(at.getTime()))) {
+      console.error('[CommandCenter] onScrub expects a Date or null, got', at);
+      return;
+    }
+
     // Re-selecting the instant already shown is a no-op: the scrubber debounces
     // a drag, and a drag that ends where it started should not cost six reads.
     const current = this.asOf();
@@ -900,6 +922,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.seriesGeneration++;
     this.chartSeries = null;
     this.trends = null;
+    this.accounts = null;
+    this.entries = null;
+    this.trial = null;
+    this.sagas = null;
     // A snapshot has no "now" to be fresh relative to, so the clock is reset
     // behind it; on the way back to live this restarts the count from the
     // refresh that is about to run.
@@ -1161,16 +1187,27 @@ export class DashboardComponent implements OnInit, OnDestroy {
         : of<ChartSeries | null>(null)
     }).subscribe({
       next: ({ accounts, entries, trial, sagas, trends, series }) => {
-        this.accounts = accounts;
-        this.entries = entries;
-        this.trial = trial;
-        this.sagas = sagas;
+        // Every source is gated on the generation, not just the two the range
+        // selector moves. A reply that is no longer the one being waited for
+        // describes a different instant, and assigning it would mix two instants
+        // on one screen — most visibly by putting the live account list back
+        // under a snapshot banner, since the browser computes AUM and Active
+        // Accounts from this array. A poll keeps the same generation, so this
+        // only ever drops replies to a superseded range or scrub.
+        const current = generation === this.seriesGeneration;
+
+        if (current) {
+          this.accounts = accounts;
+          this.entries = entries;
+          this.trial = trial;
+          this.sagas = sagas;
+        }
 
         // A skipped fetch carries null; only a fetched answer may replace a
-        // payload, and only if the range it was fetched for is still the
+        // payload, and only while the range it was fetched for is still the
         // selected one. A 1y query easily outlives the operator's next click,
         // and its reply must not overwrite the 7D payload that replaced it.
-        if (fetchRange && generation === this.seriesGeneration) {
+        if (fetchRange && current) {
           this.trends = trends;
           this.chartSeries = series;
         }
@@ -1187,11 +1224,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.reportFailures(failed);
         this.initialLoad = false;
 
-        // Fresh data: restart the "Updated Xs ago" clock and flash it green.
-        this.lastLoadedAt = new Date();
-        this.secondsSinceUpdate = 0;
-        this.justRefreshed = true;
-        setTimeout(() => (this.justRefreshed = false), 300);
+        // Fresh data: restart the "Updated Xs ago" clock and flash it green. Only
+        // for a reply that was actually applied — a superseded one was discarded,
+        // and stamping the clock for it would report freshness for data the
+        // dashboard is not showing.
+        if (current) {
+          this.lastLoadedAt = new Date();
+          this.secondsSinceUpdate = 0;
+          this.justRefreshed = true;
+          setTimeout(() => (this.justRefreshed = false), 300);
+        }
       },
       // Safety net: with per-source catchError this should not normally fire.
       error: (err) => {
@@ -1412,6 +1454,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private rebuildChartsIfChanged(series: ChartSeries | null): void {
     const signature = [
       this.range,
+      // The axis is anchored on the described day, so two instants a month apart
+      // can share a range, a series shape and a trend signature while needing
+      // different axes. Without this the second scrub would keep the first's
+      // labels.
+      this.asOf()?.getTime() ?? 'live',
       this.seriesSignature(series),
       this.accounts?.length ?? -1, this.totalAum, this.activeAccounts,
       this.entries?.length ?? -1,
@@ -1438,7 +1485,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const t = this.theme;
     // The chart follows the range the payload was built for, so a race between
     // two ranges cannot plot one window under another's labels.
-    const buckets: ChartBuckets | null = hasChartData(series) ? bucketedSeries(series!) : null;
+    //
+    // The axis is anchored on the day the dashboard is *describing*, not on the
+    // real today. Under a snapshot those differ, and every point of the series
+    // predates today by months or years: a 1Y axis ending 2026-09-24 has the
+    // snapshot's 2024-2025 rows fall outside it, where they are dropped and the
+    // buckets are zero-filled — which drew "No data" over a year of history that
+    // the payload was carrying in full.
+    const buckets: ChartBuckets | null = hasChartData(series)
+      ? bucketedSeries(series!, isoDay(this.asOf() ?? new Date()))
+      : null;
 
     if (buckets && sum(buckets.volume) > 0) {
       this.volumeChartType = buckets.bucket === 'day' ? 'bar' : 'line';
