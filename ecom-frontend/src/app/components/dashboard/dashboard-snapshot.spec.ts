@@ -394,4 +394,81 @@ describe('DashboardComponent snapshot mode', () => {
       .toBe(false);
     settle();
   }));
+
+  /**
+   * The SLA card, which is the one KPI the server can report no measurement for.
+   *
+   * Its samples are counted in the ledger's memory, so every instant before the
+   * process started has none — and `compliancePercentBetween` answers 0 for an
+   * empty window. Reported as a value, that claimed a total outage across the
+   * whole of history, complete with the red "missed target" dot the card draws
+   * for a breach of its 95% floor. The server sends `current: null` for such a
+   * window now; the card must read "No data" and claim nothing.
+   */
+  it('shows no measurement, and no breach, for a window with no samples', fakeAsync(() => {
+    mount();
+
+    // What the backend returns for the SLA at a historical cutoff: no value, no
+    // baseline, and a gap at every one of its seven points.
+    const slaNoSamples = {
+      current: null, previous: null, deltaPercent: null,
+      history: [null, null, null, null, null, null, null]
+    } as unknown as KpiTrend;
+    (ledger.kpiTrends as jasmine.Spy).and.callFake((r: string) =>
+      of({ ...SNAPSHOT_TRENDS, dashboardSlaCompliance: slaNoSamples, range: r }));
+
+    component.onScrub(SCRUB_TO);
+    tick(50);
+    fixture.detectChanges();
+
+    const sla = card('dashboardSlaCompliance');
+    expect(sla.value).toBeNull();
+    expect(component.kpiHasTrend(sla)).toBe(false);
+    expect(component.kpiDelta(sla)).toBe('');
+    // A null value is not a judgement, so the card carries no threshold dot at
+    // all — rather than a red one asserting a target was missed.
+    expect(component.kpiTargetState(sla)).toBeNull();
+
+    const el = cardElement('Dashboard SLA');
+    expect(el).withContext('the SLA card should render').toBeTruthy();
+    const valueEl = el!.querySelector('.kpi-value')!;
+    expect(valueEl.classList.contains('na'))
+      .withContext('the card must be in its No-data state, not showing 0.0%')
+      .toBe(true);
+    expect(valueEl.textContent).toContain('No data');
+    expect(el!.querySelector('.trend-none')?.textContent).toContain('—');
+    expect(el!.querySelector('.kpi-dot'))
+      .withContext('no threshold dot may be drawn for an unmeasured window')
+      .toBeNull();
+    settle();
+  }));
+
+  /**
+   * The other half of the rule, and the constraint on the fix: a window that
+   * <em>does</em> hold samples must still report a real percentage. This is also
+   * the state the live dashboard is normally in, since a freshly started service
+   * has no samples in the 24 hours before it.
+   */
+  it('still reports a real SLA percentage for a window that has samples', fakeAsync(() => {
+    mount();
+    const slaMeasured = {
+      current: 28.07, previous: 0, deltaPercent: null,
+      history: [null, null, null, null, null, null, 28.07]
+    } as unknown as KpiTrend;
+    (ledger.kpiTrends as jasmine.Spy).and.callFake((r: string) =>
+      of({ ...SNAPSHOT_TRENDS, dashboardSlaCompliance: slaMeasured, range: r }));
+
+    component.refreshAll('range-change');
+    tick(50);
+    fixture.detectChanges();
+
+    const sla = card('dashboardSlaCompliance');
+    expect(sla.value).toBe(28.07);
+    // No baseline to compare against, so the trend is a dash — but the value stands.
+    expect(component.kpiHasTrend(sla)).toBe(false);
+    expect(component.kpiTargetState(sla))
+      .withContext('28.07% is under the 95% floor, so the dot reports a miss')
+      .toBe('missed');
+    settle();
+  }));
 });
