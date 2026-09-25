@@ -14,13 +14,23 @@ import java.util.Optional;
 public interface SagaStateJpaRepository extends JpaRepository<SagaStateEntity, String> {
 
     /**
-     * Saga headers, without their steps.
+     * Saga headers, without their steps, newest first.
      *
      * <p>Deliberately a projection rather than {@code findAll()}: the steps are a
      * collection on the entity, so loading sagas loaded their steps too — 2,765
      * sagas meant 11,334 extra rows per call, which is most of why the saga list
      * took seconds. Nothing in the list view reads a step; the detail view asks
      * for them by id.
+     *
+     * <p>Ordered here rather than left to the caller because without an
+     * {@code ORDER BY} the result came back in whatever order the table happened
+     * to be scanned in — which is insertion order in practice, i.e. oldest first.
+     * With 2,788 sagas paged 15 at a time the list's first page was therefore the
+     * oldest activity in the ledger and a transfer made a moment ago appeared on
+     * the last page, which reads exactly like the transfer never happened. The
+     * client also sorts (see {@code saga-list.component.ts}), but a
+     * newest-first list is what this endpoint means, and it should not depend on
+     * the caller to ask for it.
      */
     @Query("""
             SELECT s.transactionId AS transactionId,
@@ -32,6 +42,7 @@ public interface SagaStateJpaRepository extends JpaRepository<SagaStateEntity, S
                    s.completedAt AS completedAt,
                    s.errorMessage AS errorMessage
             FROM SagaStateEntity s
+            ORDER BY s.startedAt DESC
             """)
     List<SagaHeader> findAllHeaders();
 
