@@ -24,11 +24,21 @@ const RAW = process.env.RAW === '1';
 
 const NUL = '\u0000';
 
-/** STOMP 1.2 frame: command, headers, blank line, body, NUL. */
-const frame = (command, headers = {}, body = '') =>
-  command + '\n' +
-  Object.entries(headers).map(([k, v]) => `${k}:${v}`).join('\n') +
-  '\n\n' + body + NUL;
+/**
+ * STOMP 1.2 frame: command, headers, blank line, body, NUL.
+ *
+ * The blank line is what terminates the header block, so a frame with no headers
+ * is command + ONE newline, not two. Building it as `command + '\n' + headers +
+ * '\n\n'` — which is what this did — emits an extra empty header line for a
+ * header-less frame, and Spring's decoder rejects the whole frame: the DISCONNECT
+ * at the end of every run produced a "Failed to parse TextMessage" ERROR in the
+ * service log. Joining command and headers into one list keeps the count right
+ * whether or not there are any.
+ */
+const frame = (command, headers = {}, body = '') => {
+  const head = [command, ...Object.entries(headers).map(([k, v]) => `${k}:${v}`)].join('\n');
+  return head + '\n\n' + body + NUL;
+};
 
 /**
  * Splits a received chunk into complete frames.
