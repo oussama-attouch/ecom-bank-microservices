@@ -9,6 +9,8 @@ import att.ossama.ledgerservice.domain.SagaStatus;
 import att.ossama.ledgerservice.domain.TransactionRecord;
 import att.ossama.ledgerservice.eventstore.EventStore;
 import att.ossama.ledgerservice.journal.JournalService;
+import att.ossama.ledgerservice.observability.LiveEvent;
+import att.ossama.ledgerservice.observability.LiveEventBroadcaster;
 import att.ossama.ledgerservice.projection.AccountProjection;
 import att.ossama.ledgerservice.publisher.TransactionEventPublisher;
 import att.ossama.ledgerservice.security.TransferLimitPolicy;
@@ -18,8 +20,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -47,6 +51,7 @@ public class TransferSagaService {
     private final TransactionEventPublisher publisher;
     private final JournalService journalService;
     private final TransferLimitPolicy transferLimitPolicy;
+    private final LiveEventBroadcaster broadcaster;
     private final Clock clock;
 
     public TransferSagaService(EventStore eventStore,
@@ -55,6 +60,7 @@ public class TransferSagaService {
                                TransactionEventPublisher publisher,
                                JournalService journalService,
                                TransferLimitPolicy transferLimitPolicy,
+                               LiveEventBroadcaster broadcaster,
                                Clock clock) {
         this.eventStore = eventStore;
         this.projection = projection;
@@ -62,6 +68,7 @@ public class TransferSagaService {
         this.publisher = publisher;
         this.journalService = journalService;
         this.transferLimitPolicy = transferLimitPolicy;
+        this.broadcaster = broadcaster;
         this.clock = clock;
     }
 
@@ -126,7 +133,7 @@ public class TransferSagaService {
 
         SagaState saga = new SagaState(txId, source, dest, amount, timeline.startedAt());
         sagaRepository.save(saga);
-        saga.addStep("VALIDATE", timeline.validate(), null, "EXECUTED");
+        recordStep(saga, "VALIDATE", timeline.validate(), null, "EXECUTED");
 
         // Step 2: debit source
         Instant debitAt = timeline.debitSource();
@@ -134,10 +141,11 @@ public class TransferSagaService {
             Event debit = new MoneyDebitedEvent(uuid(), debitAt, txId, source, amount, "SAGA TRANSFER to " + dest);
             List<Event> appended = eventStore.append(List.of(debit), debitAt);
             journalService.postTransferDebit(txId, source, amount, debitAt);
-            saga.addStep("DEBIT_SOURCE", debitAt, appended.get(0).getOffset(), "EXECUTED");
+            recordStep(saga, "DEBIT_SOURCE", debitAt, appended.get(0).getOffset(), "EXECUTED");
         } catch (Exception e) {
             log.error("SAGA {} step DEBIT_SOURCE failed", txId, e);
-            saga.finish(SagaStatus.FAILED, "Debit source failed: " + e.getMessage(), timeline.completedAt(debitAt));
+            recordFinish(saga, SagaStatus.FAILED, "Debit source failed: " + e.getMessage(),
+                    timeline.completedAt(debitAt));
             return persist(saga);
         }
 
@@ -148,18 +156,20 @@ public class TransferSagaService {
             List<Event> appended = eventStore.append(List.of(credit), creditAt);
             journalService.postTransferCredit(txId, dest, amount, creditAt);
             journalService.verifyTransactionBalanced(txId);
-            saga.addStep("CREDIT_DESTINATION", creditAt, appended.get(0).getOffset(), "EXECUTED");
+            recordStep(saga, "CREDIT_DESTINATION", creditAt, appended.get(0).getOffset(), "EXECUTED");
         } catch (Exception e) {
             log.error("SAGA {} step CREDIT_DESTINATION failed", txId, e);
-            saga.addStep("CREDIT_DESTINATION", creditAt, null, "FAILED");
+            recordStep(saga, "CREDIT_DESTINATION", creditAt, null, "FAILED");
             Instant reversalAt = timeline.compensateCredit(creditAt);
             if (!reverseDebit(saga, source, amount, txId, reversalAt)) {
-                saga.finish(SagaStatus.FAILED, "Credit destination failed and compensation failed: " + e.getMessage(),
+                recordFinish(saga, SagaStatus.FAILED,
+                        "Credit destination failed and compensation failed: " + e.getMessage(),
                         timeline.completedAt(reversalAt));
                 log.error("SAGA {} compensation failed - CRITICAL", txId);
                 return persist(saga);
             }
-            saga.finish(SagaStatus.COMPENSATING, "Credit destination failed; debit reversed. " + e.getMessage(),
+            recordFinish(saga, SagaStatus.COMPENSATING,
+                    "Credit destination failed; debit reversed. " + e.getMessage(),
                     timeline.completedAt(reversalAt));
             return persist(saga);
         }
@@ -174,10 +184,10 @@ public class TransferSagaService {
                 publisher.publishStrict(
                         new TransactionRecord(txId, "TRANSFER", null, source, dest, amount, archiveAt.toString()));
             }
-            saga.addStep("ARCHIVE", archiveAt, null, "EXECUTED");
+            recordStep(saga, "ARCHIVE", archiveAt, null, "EXECUTED");
         } catch (Exception e) {
             log.warn("SAGA {} step ARCHIVE failed: {}", txId, e.getMessage());
-            saga.addStep("ARCHIVE", archiveAt, null, "FAILED");
+            recordStep(saga, "ARCHIVE", archiveAt, null, "FAILED");
             // Undo the credit first, then the debit: the credit only existed
             // because the debit did, so unwinding it first leaves the last
             // compensation step as the one that restores the source. Both run even
@@ -191,15 +201,17 @@ public class TransferSagaService {
             // ends when it does whichever way it went.
             Instant endsAt = timeline.completedAt(reverseDebitAt);
             if (!reversedCredit || !reversedDebit) {
-                saga.finish(SagaStatus.FAILED, "Archive failed and compensation failed: " + e.getMessage(), endsAt);
+                recordFinish(saga, SagaStatus.FAILED,
+                        "Archive failed and compensation failed: " + e.getMessage(), endsAt);
                 log.error("SAGA {} compensation failed - CRITICAL", txId);
                 return persist(saga);
             }
-            saga.finish(SagaStatus.COMPENSATING, "Archive failed; transfer reversed. " + e.getMessage(), endsAt);
+            recordFinish(saga, SagaStatus.COMPENSATING,
+                    "Archive failed; transfer reversed. " + e.getMessage(), endsAt);
             return persist(saga);
         }
 
-        saga.finish(SagaStatus.COMPLETED, null, timeline.completedAt(archiveAt));
+        recordFinish(saga, SagaStatus.COMPLETED, null, timeline.completedAt(archiveAt));
         log.info("SAGA {} COMPLETED", txId);
         return persist(saga);
     }
@@ -211,10 +223,10 @@ public class TransferSagaService {
                     "SAGA COMPENSATION (reverse debit)");
             List<Event> appended = eventStore.append(List.of(credit), occurredAt);
             journalService.reverseTransferDebit(txId, accountId, amount, occurredAt);
-            saga.addStep("COMPENSATE_CREDIT_" + accountId, occurredAt, appended.get(0).getOffset(), "COMPENSATED");
+            recordStep(saga, "COMPENSATE_CREDIT_" + accountId, occurredAt, appended.get(0).getOffset(), "COMPENSATED");
             return true;
         } catch (Exception e) {
-            saga.addStep("COMPENSATE_CREDIT_" + accountId, occurredAt, null, "FAILED");
+            recordStep(saga, "COMPENSATE_CREDIT_" + accountId, occurredAt, null, "FAILED");
             log.error("SAGA {} reverseDebit failed for {}", txId, accountId, e);
             return false;
         }
@@ -227,10 +239,10 @@ public class TransferSagaService {
                     "SAGA COMPENSATION (reverse credit)");
             List<Event> appended = eventStore.append(List.of(debit), occurredAt);
             journalService.reverseTransferCredit(txId, accountId, amount, occurredAt);
-            saga.addStep("COMPENSATE_DEBIT_" + accountId, occurredAt, appended.get(0).getOffset(), "COMPENSATED");
+            recordStep(saga, "COMPENSATE_DEBIT_" + accountId, occurredAt, appended.get(0).getOffset(), "COMPENSATED");
             return true;
         } catch (Exception e) {
-            saga.addStep("COMPENSATE_DEBIT_" + accountId, occurredAt, null, "FAILED");
+            recordStep(saga, "COMPENSATE_DEBIT_" + accountId, occurredAt, null, "FAILED");
             log.error("SAGA {} reverseCredit failed for {}", txId, accountId, e);
             return false;
         }
@@ -244,6 +256,71 @@ public class TransferSagaService {
     private SagaState persist(SagaState saga) {
         sagaRepository.save(saga);
         return saga;
+    }
+
+    /**
+     * Records a saga step and mirrors it onto the live event stream.
+     *
+     * <p>Every {@code addStep} in this class goes through here rather than calling
+     * {@link SagaState#addStep} directly, so the two cannot drift: a step that is
+     * added is a step that is streamed, including the compensation steps, which
+     * are exactly the ones an operator watching a stuck transfer needs to see.
+     *
+     * <p>The stream is best-effort and must not be able to fail the saga, which is
+     * why the broadcaster call sits outside every {@code try} block that could
+     * turn a failure into a compensation. It cannot throw by contract — the
+     * implementation only offers the event to a bounded queue — and the metadata is
+     * built from values already in hand.
+     */
+    private void recordStep(SagaState saga, String name, Instant occurredAt, Long offset, String status) {
+        saga.addStep(name, occurredAt, offset, status);
+        String transactionId = saga.getTransactionId();
+        broadcaster.publish(new LiveEvent(
+                occurredAt != null ? occurredAt : Instant.now(),
+                LiveEvent.SOURCE_SAGA,
+                LiveEvent.TYPE_SAGA_STEP,
+                "SAGA " + transactionId + " step " + name + " " + status
+                        + (offset != null ? " (log offset " + offset + ")" : ""),
+                transactionId,
+                LiveEvent.metadataOf(
+                        "step", name,
+                        "stepStatus", status,
+                        "offset", offset,
+                        "sourceAccountId", saga.getSourceAccountId(),
+                        "destinationAccountId", saga.getDestinationAccountId(),
+                        "amount", saga.getAmount())));
+    }
+
+    /**
+     * Records the saga's terminal state and mirrors it onto the live event stream.
+     * Counterpart of {@link #recordStep}; see there for why both go through a
+     * private method.
+     */
+    private void recordFinish(SagaState saga, SagaStatus status, String errorMessage, Instant completedAt) {
+        saga.finish(status, errorMessage, completedAt);
+        String transactionId = saga.getTransactionId();
+        // Computed here rather than put into the map afterwards: a null duration
+        // (no start instant to measure from) is dropped by metadataOf, where a
+        // put() would have left the caller deciding what to do with it.
+        Long durationMs = (saga.getStartedAt() != null && completedAt != null)
+                ? Duration.between(saga.getStartedAt(), completedAt).toMillis()
+                : null;
+        Map<String, Object> metadata = LiveEvent.metadataOf(
+                "status", status.name(),
+                "steps", saga.getSteps().size(),
+                "durationMs", durationMs,
+                "error", errorMessage,
+                "sourceAccountId", saga.getSourceAccountId(),
+                "destinationAccountId", saga.getDestinationAccountId(),
+                "amount", saga.getAmount());
+        broadcaster.publish(new LiveEvent(
+                completedAt != null ? completedAt : Instant.now(),
+                LiveEvent.SOURCE_SAGA,
+                LiveEvent.TYPE_SAGA_FINISHED,
+                "SAGA " + transactionId + " finished " + status.name()
+                        + (errorMessage != null ? ": " + errorMessage : ""),
+                transactionId,
+                metadata));
     }
 
     private String uuid() {
