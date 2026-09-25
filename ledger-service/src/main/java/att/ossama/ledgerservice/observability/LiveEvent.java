@@ -48,6 +48,15 @@ public record LiveEvent(
     public static final String SOURCE_KAFKA_PUBLISHER = "kafka-publisher";
     public static final String SOURCE_KAFKA_CONSUMER = "kafka-consumer";
 
+    /**
+     * billing-service's own consumption of the same topic, reported over
+     * {@link LiveEventIngestController}. Distinct from
+     * {@link #SOURCE_KAFKA_CONSUMER} on purpose: "a consumer read this" and
+     * "the archiver read this" fail for different reasons, and a single source
+     * would make the stream unable to say which of them a gap belongs to.
+     */
+    public static final String SOURCE_BILLING_CONSUMER = "billing-consumer";
+
     /** What happened, as it appears in {@link #type()}. */
     public static final String TYPE_SAGA_STEP = "SAGA_STEP";
     public static final String TYPE_SAGA_FINISHED = "SAGA_FINISHED";
