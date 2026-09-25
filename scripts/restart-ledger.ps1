@@ -9,16 +9,36 @@ $port = 8085
 $jar = "ledger-service\target\ledger-service-0.0.1-SNAPSHOT.jar"
 
 Write-Host "Checking port $port..." -ForegroundColor Cyan
-$existing = netstat -ano | Select-String ":$port\s" | ForEach-Object {
-    ($_ -split '\s+')[-1]
-} | Sort-Object -Unique | Where-Object { $_ -match '^\d+$' -and $_ -ne '0' }
 
-if ($existing) {
-    foreach ($procId in $existing) {
-        Write-Host "Killing PID $procId holding port $port" -ForegroundColor Yellow
+# Only sockets where :8085 is the LOCAL end and the state is LISTENING belong to
+# the service. The previous version scraped every netstat line containing the
+# port, which also matched each client merely *connected* to it and killed that
+# process instead — including the gateway, which holds an established connection
+# to the ledger while proxying requests to it. It took the gateway down with it.
+$listeners = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty OwningProcess -Unique |
+    Where-Object { $_ -gt 0 }
+
+if ($listeners) {
+    foreach ($procId in $listeners) {
+        $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $procId" -ErrorAction SilentlyContinue
+        if (-not $proc) { continue }
+        if ($proc.Name -ne 'java.exe') {
+            # A non-JVM holding 8085 is not this service's zombie. Report it and
+            # leave it alone rather than guessing.
+            Write-Host "PID $procId ($($proc.Name)) is listening on $port but is not a JVM - not killing it" -ForegroundColor Red
+            Write-Host "  $($proc.CommandLine)" -ForegroundColor DarkGray
+            continue
+        }
+        $cmd = $proc.CommandLine
+        $shown = if ($cmd.Length -gt 140) { $cmd.Substring(0, 140) + '...' } else { $cmd }
+        Write-Host "Killing PID $procId listening on $port" -ForegroundColor Yellow
+        Write-Host "  $shown" -ForegroundColor DarkGray
         Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
     }
     Start-Sleep -Seconds 2
+} else {
+    Write-Host "Nothing is listening on $port" -ForegroundColor Green
 }
 
 Write-Host "Building ledger-service..." -ForegroundColor Cyan
