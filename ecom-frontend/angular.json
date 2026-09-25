@@ -29,22 +29,25 @@
             "styles": [
               "src/styles.scss"
             ],
-            "scripts": []
+            "scripts": [],
+            "allowedCommonJsDependencies": [
+              "@stomp/stompjs"
+            ]
           },
           "configurations": {
             "production": {
               "budgets": [
-  {
-    "type": "initial",
-    "maximumWarning": "2MB",
-    "maximumError": "4MB"
-  },
-  {
-    "type": "anyComponentStyle",
-    "maximumWarning": "10kB",
-    "maximumError": "20kB"
-  }
-],
+                {
+                  "type": "initial",
+                  "maximumWarning": "2MB",
+                  "maximumError": "4MB"
+                },
+                {
+                  "type": "anyComponentStyle",
+                  "maximumWarning": "10kB",
+                  "maximumError": "20kB"
+                }
+              ],
               "outputHashing": "all"
             },
             "development": {
