@@ -38,6 +38,7 @@
     "target": "http://localhost:8888",
     "secure": false,
     "changeOrigin": true,
+    "ws": true,
     "logLevel": "debug",
     "timeout": 60000,
     "proxyTimeout": 60000

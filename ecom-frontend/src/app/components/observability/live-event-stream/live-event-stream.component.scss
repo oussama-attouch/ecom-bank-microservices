@@ -1,0 +1,34 @@
+/* =============================================================================
+   Live event stream page.
+
+   The grid is a fixed-height window rather than a growing page: a stream has no
+   end, so the feed has to be a pane that scrolls inside itself, and the page
+   behind it must not scroll away from the header. The height subtracts the
+   shell's own chrome (64px topbar + 64px content padding + the page head).
+   ============================================================================= */
+
+:host { display: block; }
+
+.head-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.stream-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  gap: var(--space-5);
+  height: calc(100vh - 200px);
+  min-height: 380px;
+}
+
+/* One column below the tablet breakpoint, and the fixed height goes with it:
+   stacked panes in a viewport-tall box would clip the panel's legend. */
+@media (max-width: 1024px) {
+  .stream-grid {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  app-event-feed { height: 60vh; }
+}

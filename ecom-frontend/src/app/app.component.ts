@@ -76,6 +76,12 @@ export class AppComponent implements OnInit {
         { label: 'Sagas', icon: 'pi pi-sitemap', route: '/transactions/sagas' },
         { label: 'Journal', icon: 'pi pi-book', route: '/transactions/journal' }
       ]
+    },
+    {
+      header: 'Observability',
+      items: [
+        { label: 'Live Events', icon: 'pi pi-bolt', route: '/observability/live' }
+      ]
     }
   ];
 

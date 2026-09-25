@@ -13,6 +13,7 @@ import { SagaInspectorComponent } from './components/sagas/saga-inspector.compon
 import { JournalExplorerComponent } from './components/journal/journal-explorer.component';
 import { StatementComponent } from './components/statement/statement.component';
 import { JournalComponent } from './components/journal/journal.component';
+import { LiveEventStreamComponent } from './components/observability/live-event-stream/live-event-stream.component';
 import { LoginComponent } from './components/login/login.component';
 import { authGuard } from './guards/auth.guard';
 import { roleGuard } from './guards/role.guard';
@@ -50,6 +51,10 @@ export const routes: Routes = [
       { path: 'transactions/journal', component: JournalExplorerComponent },
       { path: 'accounts/:id/statement', component: StatementComponent },
       { path: 'journal', component: JournalComponent },
+      // Read-only view of the ledger's live event stream. No role guard: every
+      // signed-in operator may watch what the ledger is doing, and the stream
+      // exposes nothing the Sagas and Journal pages do not already show.
+      { path: 'observability/live', component: LiveEventStreamComponent },
     ]
   },
   { path: '**', redirectTo: 'dashboard' }

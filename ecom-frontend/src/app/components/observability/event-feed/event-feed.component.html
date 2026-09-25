@@ -1,0 +1,56 @@
+<!--
+  Feed shell. The header states what the list below is showing — live, or a
+  frozen snapshot with a count of what it has missed — because a paused feed and
+  a stalled one look identical otherwise.
+-->
+<div class="feed-head">
+  <span class="feed-title">Event feed</span>
+  @if (paused) {
+    <span class="feed-state paused">
+      <i class="pi pi-pause"></i>
+      Paused@if (missed > 0) { <span class="missed">· {{ missed }} missed</span> }
+    </span>
+  } @else {
+    <span class="feed-state live">
+      <i class="pi pi-bolt"></i> Live
+    </span>
+  }
+  <span class="spacer"></span>
+  <span class="feed-depth" title="Events kept in memory, and how many rows are shown">
+    newest {{ rows.length }} of {{ buffered }} buffered ({{ bufferSize }} max)
+  </span>
+</div>
+
+<p-scrollPanel [style]="{ width: '100%', height: '100%' }" styleClass="feed-scroll">
+  @if (rows.length === 0) {
+    <div class="feed-empty">
+      <i class="pi pi-spinner pi-spin"></i>
+      <p>Waiting for events…</p>
+      <span>Make a transfer, or credit an account, and it will appear here.</span>
+    </div>
+  } @else {
+    <ul class="feed-list">
+      @for (row of rows; track row.key) {
+        <li class="feed-row tone-{{ row.tone }}">
+          <span class="row-clock">{{ row.clock }}</span>
+          <span class="row-body">
+            <span class="row-top">
+              <span class="row-source">{{ row.source }}</span>
+              <span class="row-type">{{ row.type }}</span>
+              @if (row.outcome) {
+                <span class="row-outcome">{{ row.outcome }}</span>
+              }
+              @if (row.detail) {
+                <span class="row-detail">{{ row.detail }}</span>
+              }
+            </span>
+            <span class="row-description">{{ row.description }}</span>
+          </span>
+          @if (row.transaction) {
+            <span class="row-tx" title="transaction id">{{ row.transaction }}</span>
+          }
+        </li>
+      }
+    </ul>
+  }
+</p-scrollPanel>
