@@ -163,11 +163,19 @@ export class ArchivedTransactionsComponent implements OnInit {
     return id.length > 12 ? id.substring(0, 12) + '…' : id;
   }
 
+  /**
+   * Badge severity per transaction type.
+   *
+   * TRANSFER is the baseline operation type; blue/red are reserved for future
+   * CREDIT/DEBIT rows so anomalies stand out. Every row in the archive today is
+   * a TRANSFER, and an amber badge on all of them made the column read as alarm
+   * rather than as information — colour should mark the exception, not the norm.
+   */
   typeSeverity(type?: string): 'info' | 'danger' | 'warn' | 'secondary' {
     switch (type) {
       case 'CREDIT': return 'info';
       case 'DEBIT': return 'danger';
-      case 'TRANSFER': return 'warn';
+      case 'TRANSFER': return 'secondary';
       default: return 'secondary';
     }
   }
