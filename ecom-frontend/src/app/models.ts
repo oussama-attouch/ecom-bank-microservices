@@ -310,3 +310,34 @@ export interface ProjectionRebuildReport {
   /** Up to twenty disagreements, as text. Capped server-side; the count is not. */
   mismatches: string[];
 }
+
+/**
+ * One transaction archived by billing-service after it was consumed from the
+ * `ledger-events` Kafka topic — the ledger's committed transaction as billing
+ * stored it, unmodified.
+ *
+ * Every field is optional: this is the archive of whatever the ledger
+ * published, so a partial event must not break the page that reads it back.
+ */
+export interface ArchivedTransaction {
+  /** Database identity of the archive row, not the ledger's transaction id. */
+  id?: number;
+  /** The ledger's transaction id; keys the saga inspector link. */
+  transactionId?: string;
+  /** CREDIT | DEBIT | TRANSFER. */
+  type?: string;
+  /**
+   * Null on every transfer row: the ledger sends the two account sides instead
+   * of a single account, so `fromAccountId`/`toAccountId` carry the direction.
+   */
+  accountId?: string | null;
+  fromAccountId?: string;
+  toAccountId?: string;
+  amount?: number;
+  /**
+   * ISO-8601 as published by the ledger, e.g. `2026-09-26T11:47:56.797432Z`.
+   * A string rather than a Date because that is how the archive stores it — and
+   * because the fixed-width format sorts chronologically as plain text.
+   */
+  timestamp?: string;
+}

@@ -80,7 +80,8 @@ export class AppComponent implements OnInit {
     {
       header: 'Observability',
       items: [
-        { label: 'Live Events', icon: 'pi pi-bolt', route: '/observability/live' }
+        { label: 'Live Events', icon: 'pi pi-bolt', route: '/observability/live' },
+        { label: 'Archived Transactions', icon: 'pi pi-inbox', route: '/observability/archived' }
       ]
     }
   ];
