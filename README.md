@@ -30,7 +30,7 @@
 | 13 | [Project Structure](#13-project-structure) |
 | 14 | [Documentation](#14-documentation) |
 | 15 | [Future Work](#15-future-work) |
-| 16 | [Author](#17-author) |
+| 16 | [Author](#16-author) |
 
 ---
 
@@ -134,11 +134,11 @@ The dashboard displays a real-time `LEDGER BALANCED` indicator. If it ever turns
 
 ## 4. Screenshots
 
-### 4.1 Command Center — 16 real-time KPIs
+### 4.1 Command Center — 16 real-time KPIs (light mode, 1-year range)
 
 ![Command Center](docs/screenshots/dashboard/dashboard-light.png)
 
-16 KPIs with sparklines, trend arrows, and target thresholds. Polled every 5 seconds without a loading flash.
+16 KPIs with sparklines, trend arrows, and target thresholds. The header offers the period selector (7D / 30D / 90D / 1Y / ALL), the time-travel scrubber, and a Rebuild Projections action. Polled every 5 seconds without a loading flash.
 
 ### 4.2 Command Center — Dark Mode
 
@@ -188,6 +188,18 @@ The branded split-screen landing page that initiates the OIDC flow. Clicking the
 
 OIDC Authorization Code flow with PKCE. The user authenticates on Keycloak's hosted page (left). JWT is validated at the gateway against Keycloak's JWKS endpoint. Three roles — TELLER, MANAGER, AUDITOR — declared declaratively in `realm-export.json` (right).
 
+### 4.10 Live Event Stream — Kafka Pipeline in Real Time
+
+![Live Event Stream](docs/screenshots/observability/live-event-stream.png)
+
+Every saga step, event-store append, Kafka publish, and Kafka consume streamed over WebSocket in real time. Color-coded by source; the throughput panel tracks events per second; pause freezes the view without closing the connection. This page makes the Kafka pipeline visible — the six sources fan into a single `/topic/events`, and every event on screen is proof the pipeline works end-to-end.
+
+### 4.11 Archived Transactions — Kafka's Persistent Output
+
+![Archived Transactions](docs/screenshots/observability/archived-transactions.png)
+
+Every transaction `billing-service` has consumed from the `ledger-events` topic and archived. The summary bar shows the archive's current size, transfer count, total volume, and newest timestamp. Filters (type, date range, amount, account) narrow the view; row IDs link to the source saga in the Saga Inspector. Together with the Live Events page, this completes the Kafka story: what was published, and what was durably received.
+
 ---
 
 ## 5. Architecture
@@ -202,6 +214,7 @@ OIDC Authorization Code flow with PKCE. The user authenticates on Keycloak's hos
 | **Ledger** | Event-sourced — the only service with Postgres; other contexts use in-memory H2 |
 | **Kafka** | Opt-in transport — `ledger.publisher=http` by default; switch to `kafka` for exactly-once archival |
 | **Security** | Three-layer RBAC — frontend UX → gateway trust boundary → backend authorization |
+| **Observability** | Live WebSocket stream of every saga step and Kafka event; archived-transaction view proving end-to-end delivery |
 
 ---
 
@@ -227,6 +240,9 @@ OIDC Authorization Code flow with PKCE. The user authenticates on Keycloak's hos
 | 📈 **Range-aware charts** | 7d / 30d / 90d / 1y / ALL selector recomputes both charts and KPIs |
 | 🎨 **Design system** | Dark/light mode, glassmorphic cards, gradient accents, tabular-nums |
 | ⚡ **Silent polling** | No loading flash on the 5s refresh cycle; skeletons only on first load |
+| ⏱️ **Time-travel scrubber** | Point-in-time queries reconstruct the entire dashboard from the event log |
+| 📡 **Live event stream** | WebSocket-based real-time visualization of saga and Kafka activity |
+| 📦 **Archived transactions** | Persistent view of every transaction consumed by `billing-service` |
 
 ### 6.3 Analytics (BI)
 
@@ -248,7 +264,7 @@ OIDC Authorization Code flow with PKCE. The user authenticates on Keycloak's hos
 | **Security** | Keycloak 26 · OIDC Authorization Code + PKCE · JWT |
 | **Frontend** | Angular 19 · PrimeNG 19 · Chart.js · TypeScript 5.6 |
 | **Infrastructure** | Docker Compose · Eureka · Spring Cloud Config |
-| **Observability** | Spring Actuator · Micrometer · Custom SLA metrics service |
+| **Observability** | Spring Actuator · Micrometer · STOMP WebSocket · Custom SLA metrics service |
 
 ---
 
@@ -273,6 +289,12 @@ The frontend guard is UX. The gateway is the trust boundary — it strips client
 ### 8.5 Why BI metrics on a portfolio project?
 
 Most microservices demos have a dashboard with a handful of KPIs. This one has 16 KPIs including statistical anomaly detection (3σ), projection lag, audit trail completeness, and dashboard SLA compliance. Treating analytics as a first-class system with its own SLIs is the BI discipline the project is designed to demonstrate.
+
+### 8.6 Why time-travel is only possible with event sourcing
+
+A mutable balance column cannot answer "what was the balance on March 15?" without a separate audit log. With event sourcing, the answer is a query: replay events up to that instant. This is the flagship capability that justifies the entire architecture.
+
+The same event store enables a second verification: two independent implementations of the current ledger state — one replays the log, one runs SQL aggregates — must agree. When they do (they do, across 1,115 accounts to within 1e-6), it proves the projection function is correct, not just theoretically consistent.
 
 > **More decisions →** [ARCHITECTURE.md §8](./ARCHITECTURE.md#8-engineering-decisions)
 
@@ -419,13 +441,13 @@ ecom-app-microservices-main/
 ├── config-service/          # Spring Cloud Config
 ├── customer-service/        # Customer CRUD (H2)
 ├── inventory-service/       # Product CRUD (H2)
-├── billing-service/         # Bills + Kafka consumer (H2)
+├── billing-service/         # Bills + Kafka consumer + live-stream notifier (H2)
 ├── order-service/           # Orders + Feign clients (H2)
-├── ledger-service/          # Event store + journal + sagas (Postgres)
+├── ledger-service/          # Event store + journal + sagas + observability (Postgres)
 ├── ecom-frontend/           # Angular 19 + PrimeNG dashboard
 ├── keycloak/                # Realm export (TELLER / MANAGER / AUDITOR)
 ├── config-repo/             # Centralized configs
-├── scripts/                 # Restart helpers
+├── scripts/                 # Restart + kill-port helpers
 ├── docs/
 │   ├── ARCHITECTURE.md      # 8 Mermaid diagrams + decisions
 │   ├── DESIGN-BRIEF.md      # UI design system
@@ -458,16 +480,16 @@ Deliberately out of scope for this iteration:
 | **Persistent H2 → Postgres** | For customer / inventory / billing / order contexts. |
 | **mTLS between services** | Currently the gateway is the trust boundary; services trust its headers over the private network. |
 | **OpenTelemetry tracing** | Distributed traces across saga steps. |
+| **Transactional outbox** | Closes the dual-write gap between Postgres commit and Kafka publish — a `@Scheduled` poller drains an `outbox` table in the same transaction as the ledger. |
 | **Reconciliation service** | Nightly job that verifies Kafka events against journal entries. |
 
 ---
-
 
 ## 16. Author
 
 **Oussama Attouch**
 
-[GitHub](https://github.com/Oussama-Att) · [LinkedIn](https://www.linkedin.com/in/oussama-attouch-bb1558261/))
+[GitHub](https://github.com/Oussama-Att) · [LinkedIn](https://www.linkedin.com/in/oussama-attouch-bb1558261/)
 
 ---
 
