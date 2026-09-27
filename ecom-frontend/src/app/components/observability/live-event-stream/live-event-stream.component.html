@@ -1,0 +1,39 @@
+<div class="page-head">
+  <h2>Live Events</h2>
+  <div class="head-tools">
+    <!-- Wrapped rather than binding title on the tag itself: p-tag has no such
+         input, and this keeps the hint a plain DOM attribute. -->
+    <span [title]="(status$ | async)?.hint">
+      @if (status$ | async; as status) {
+        <p-tag [value]="status.label" [severity]="status.severity" [icon]="status.icon"></p-tag>
+      }
+    </span>
+    <p-button
+      [label]="paused ? 'Resume' : 'Pause'"
+      [icon]="paused ? 'pi pi-play' : 'pi pi-pause'"
+      severity="secondary"
+      size="small"
+      [title]="paused ? 'Resume rendering the feed' : 'Freeze the feed without disconnecting'"
+      (onClick)="togglePause()"></p-button>
+    <p-button
+      label="Clear"
+      icon="pi pi-trash"
+      severity="secondary"
+      size="small"
+      title="Forget every event received so far; the connection stays open"
+      (onClick)="clear()"></p-button>
+  </div>
+</div>
+
+@if (view$ | async; as view) {
+  <div class="stream-grid">
+    <app-event-feed
+      [events]="view.events"
+      [paused]="view.paused"
+      [missed]="view.missed"
+      [buffered]="view.stats.buffered"
+      [bufferSize]="view.stats.bufferSize"></app-event-feed>
+
+    <app-throughput-panel [stats]="view.stats"></app-throughput-panel>
+  </div>
+}

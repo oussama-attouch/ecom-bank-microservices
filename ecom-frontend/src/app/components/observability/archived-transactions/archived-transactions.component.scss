@@ -1,0 +1,127 @@
+/* =============================================================================
+   Archived transactions page.
+
+   The summary bar and filter row are the Journal Explorer's recipes, kept
+   deliberately identical so the two tables read as the same surface: a
+   four-cell strip of counts above a wrapping row of controls, then the table.
+
+   Column alignment and the mono/amount treatments come from the global table
+   helpers (.p-datatable .num / .mono-id, brief 5.4) rather than being redrawn
+   here, so this page cannot drift from the other tables.
+   ============================================================================= */
+
+:host { display: block; }
+
+.title-block { min-width: 0; }
+
+.page-sub {
+  margin: var(--space-1) 0 0;
+  max-width: 78ch;
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+}
+
+.page-sub code {
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.head-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+
+/* ---- Summary strip ---- */
+.summary-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.sum {
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  text-align: center;
+}
+
+.sum label {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.sum span {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+}
+
+/* The newest stamp is a date, not a count: at full size it would shout as loud
+   as the record count beside it. */
+.sum .newest { font-size: var(--text-md); font-weight: var(--weight-semibold); }
+
+/* ---- Table ----
+   These selectors deliberately do NOT begin with `.p-datatable`.
+
+   The datatable element itself is rendered by PrimeNG, so it carries PrimeNG's
+   view-encapsulation attribute, not this component's. A component rule written
+   `.p-datatable .mono-id` is rewritten to `.p-datatable[_ngcontent-this] ...`,
+   which can never match — the ancestor is not ours. Only the global
+   styles/_tables.scss rules reached the cells, and their 11px mono treatment
+   made the account ids wrap onto three lines.
+
+   So the selectors below target the classes this component owns. They are kept
+   ahead of the global sheet by load order, and marked `!important` where the
+   global `.p-datatable ...` rules would otherwise out-specify them regardless.
+   Verified in the browser rather than assumed: the cell must compute to one
+   line at 12px.
+*/
+
+/* The id cell is a link out to the saga. `.mono-id` gives it the face and size
+   globally; this adds the link's own colour and affordance. */
+.mono-id.link {
+  color: var(--accent) !important;
+  text-decoration: none;
+  border-bottom: 1px dotted var(--border);
+}
+
+.mono-id.link:hover {
+  color: var(--accent-hover) !important;
+  border-bottom-color: var(--accent-hover);
+}
+
+/* One step up from the global helper's 11px — this is the id an operator scans
+   and compares — and never broken across lines: an id wrapped after its hyphen
+   is slower to read than the width it saves. */
+.mono-id {
+  font-size: var(--text-sm) !important;
+  white-space: nowrap !important;
+}
+
+/* The archived-at stamp is one reading, not two: without this it breaks at the
+   comma as soon as the auto layout runs short of width. */
+.when { white-space: nowrap !important; }
+
+/* Width floors, so the flexible account columns give way before the fixed ones
+   wrap. Headers keep this component's attribute, so no `!important` is needed. */
+th.col-when { min-width: 156px; }
+th.col-acct { min-width: 122px; }
+
+/* The amount header carries a sort icon, so its intrinsic width is small; with
+   the auto layout that let the column collapse to nothing once the mono
+   columns stopped wrapping. Reserve room for "--,---.--" plus the icon. */
+th.num { min-width: 104px; }
+
+@media (max-width: 900px) {
+  .summary-bar { grid-template-columns: 1fr 1fr; }
+  .page-head { flex-direction: column; align-items: flex-start; gap: var(--space-3); }
+}

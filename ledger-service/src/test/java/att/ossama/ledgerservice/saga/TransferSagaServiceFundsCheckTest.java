@@ -55,8 +55,13 @@ class TransferSagaServiceFundsCheckTest {
     void setUp() {
         // A MANAGER is used throughout so the teller limit never interferes with
         // what these tests are actually about: the funds check.
+        //
+        // The broadcaster is a no-op lambda: this test is about the funds check,
+        // and the live stream is not what it asserts on. A lambda is what the
+        // interface is for — one implementation publishes, the other does nothing,
+        // and neither is the caller's business.
         service = new TransferSagaService(eventStore, projection, sagaRepository, publisher,
-                journalService, new TransferLimitPolicy(caller("MANAGER")), Clock.systemUTC());
+                journalService, new TransferLimitPolicy(caller("MANAGER")), event -> { }, Clock.systemUTC());
     }
 
     private static CallerContext caller(String... roles) {

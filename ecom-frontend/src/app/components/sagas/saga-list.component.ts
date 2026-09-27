@@ -35,7 +35,14 @@ import { TableSkeletonComponent } from '../shared/table-skeleton/table-skeleton.
     @if (loading) {
       <app-table-skeleton [rows]="5" [cols]="7"></app-table-skeleton>
     } @else {
+    <!-- Newest first by default. Without this the table renders the API's order,
+         which was insertion order — so with 2,788 sagas paged 15 at a time the
+         first page showed the oldest activity in the ledger and a transfer made
+         moments ago sat on the last page, looking exactly like a failed one. The
+         column header carries pSortableColumn="startedAt", so an operator can
+         still flip the order by clicking it. -->
     <p-table #dt [value]="filteredSagas" [paginator]="true" [rows]="15"
+             [sortField]="'startedAt'" [sortOrder]="-1"
              [globalFilterFields]="['transactionId','sourceAccountId','destinationAccountId']" responsiveLayout="scroll">
       <ng-template pTemplate="caption">
         <div class="flex justify-end">

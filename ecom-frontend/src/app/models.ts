@@ -121,8 +121,25 @@ export interface SagaState {
  * earlier period at all — which the card renders as "—" rather than as 0%.
  */
 export interface KpiTrend {
-  current: number;
-  previous: number;
+  /**
+   * The KPI's value over the selected window, or `null` when the window holds no
+   * measurement at all.
+   *
+   * `null` is not a zero and the card does not print it as one: it renders "No
+   * data". The dashboard-SLA card is the only source that can answer this way —
+   * it is counted in the server's memory, so a window from before the process
+   * started has no samples rather than a compliance of zero. Every other card
+   * reads a store that has been accumulating since the ledger began, where an
+   * empty window really is a zero.
+   */
+  current: number | null;
+  /**
+   * The value over the comparison window, or zero when there is no earlier
+   * period to measure (the `all` range) or nothing was recorded in it.
+   * `deltaPercent` is what carries "no baseline"; this stays a number so the two
+   * cases read the same way.
+   */
+  previous: number | null;
   deltaPercent: number | null;
   /**
    * One point per bucket of the selected range, oldest first, the last being the
@@ -248,4 +265,79 @@ export interface ChartSeries {
   dailyFlow: ChartFlowPoint[];
   balanceDistribution: ChartAccountBalance[];
   sagaBreakdown: SagaBreakdown;
+  /**
+   * The earliest instant the ledger holds, ISO-8601, or null for an empty log.
+   *
+   * Optional because it is an addition to a payload other code already builds:
+   * a client running ahead of its server simply gets `undefined` and leaves the
+   * timeline scrubber disabled, which is the same state as a ledger with no
+   * history. It rides here rather than on an endpoint of its own because the
+   * scrubber needs it on mount, and the dashboard is already making this call.
+   */
+  historyStart?: string | null;
+}
+
+/**
+ * Result of `POST /api/admin/projections/rebuild`: the event log replayed and
+ * checked against the read models the dashboard is served from.
+ *
+ * `consistent` is the field that matters. This service materializes no read
+ * models — the account list and every KPI are computed on demand from the event
+ * store — so a rebuild has nothing to truncate and refill; what it can do is fold
+ * the log independently and see whether the answer agrees with what the dashboard
+ * is showing. `false` therefore does not mean the operation failed. It means the
+ * two computations disagree, which means the numbers on this screen are wrong.
+ *
+ * The endpoint is gated off by default, so a caller may instead get a 404: the
+ * route is not registered at all unless the service was started with
+ * `--ledger.projection-rebuild.enabled=true`.
+ */
+export interface ProjectionRebuildReport {
+  /** How many events were folded, in log order. */
+  eventsProcessed: number;
+  /** Wall time for the replay and the comparison together. */
+  elapsedMs: number;
+  /** When the replay started, ISO-8601. */
+  rebuiltAt: string;
+  /** Accounts the replay derived from the log. */
+  accountsRebuilt: number;
+  /** Accounts the live read models returned to compare against. */
+  accountsVerified: number;
+  /** Whether every account matched on identity and balance. */
+  consistent: boolean;
+  /** How many disagreements were found, whether or not they all fit in `mismatches`. */
+  mismatchCount: number;
+  /** Up to twenty disagreements, as text. Capped server-side; the count is not. */
+  mismatches: string[];
+}
+
+/**
+ * One transaction archived by billing-service after it was consumed from the
+ * `ledger-events` Kafka topic — the ledger's committed transaction as billing
+ * stored it, unmodified.
+ *
+ * Every field is optional: this is the archive of whatever the ledger
+ * published, so a partial event must not break the page that reads it back.
+ */
+export interface ArchivedTransaction {
+  /** Database identity of the archive row, not the ledger's transaction id. */
+  id?: number;
+  /** The ledger's transaction id; keys the saga inspector link. */
+  transactionId?: string;
+  /** CREDIT | DEBIT | TRANSFER. */
+  type?: string;
+  /**
+   * Null on every transfer row: the ledger sends the two account sides instead
+   * of a single account, so `fromAccountId`/`toAccountId` carry the direction.
+   */
+  accountId?: string | null;
+  fromAccountId?: string;
+  toAccountId?: string;
+  amount?: number;
+  /**
+   * ISO-8601 as published by the ledger, e.g. `2026-09-26T11:47:56.797432Z`.
+   * A string rather than a Date because that is how the archive stores it — and
+   * because the fixed-width format sorts chronologically as plain text.
+   */
+  timestamp?: string;
 }

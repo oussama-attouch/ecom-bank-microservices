@@ -14,13 +14,23 @@ import java.util.Optional;
 public interface SagaStateJpaRepository extends JpaRepository<SagaStateEntity, String> {
 
     /**
-     * Saga headers, without their steps.
+     * Saga headers, without their steps, newest first.
      *
      * <p>Deliberately a projection rather than {@code findAll()}: the steps are a
      * collection on the entity, so loading sagas loaded their steps too — 2,765
      * sagas meant 11,334 extra rows per call, which is most of why the saga list
      * took seconds. Nothing in the list view reads a step; the detail view asks
      * for them by id.
+     *
+     * <p>Ordered here rather than left to the caller because without an
+     * {@code ORDER BY} the result came back in whatever order the table happened
+     * to be scanned in — which is insertion order in practice, i.e. oldest first.
+     * With 2,788 sagas paged 15 at a time the list's first page was therefore the
+     * oldest activity in the ledger and a transfer made a moment ago appeared on
+     * the last page, which reads exactly like the transfer never happened. The
+     * client also sorts (see {@code saga-list.component.ts}), but a
+     * newest-first list is what this endpoint means, and it should not depend on
+     * the caller to ask for it.
      */
     @Query("""
             SELECT s.transactionId AS transactionId,
@@ -32,6 +42,7 @@ public interface SagaStateJpaRepository extends JpaRepository<SagaStateEntity, S
                    s.completedAt AS completedAt,
                    s.errorMessage AS errorMessage
             FROM SagaStateEntity s
+            ORDER BY s.startedAt DESC
             """)
     List<SagaHeader> findAllHeaders();
 
@@ -59,6 +70,50 @@ public interface SagaStateJpaRepository extends JpaRepository<SagaStateEntity, S
     /** Saga counts by status, for the breakdown chart. */
     @Query("SELECT s.status, COUNT(s) FROM SagaStateEntity s GROUP BY s.status")
     List<Object[]> countByStatus();
+
+    /**
+     * Saga counts by status, for the sagas that had started by {@code asOf}.
+     *
+     * <p>The breakdown chart under the timeline scrubber. Note what this can and
+     * cannot say: the store keeps only each saga's <em>current</em> status, so a
+     * saga that started before the cutoff and has since completed is counted as
+     * COMPLETED even though it was in flight at the instant asked about. That is
+     * the same honest reading {@link #countProblemStartedBetween} documents —
+     * "started in the window, in the state it is in now" — and reconstructing the
+     * status a saga held mid-flight would need the step log, which this query
+     * deliberately does not join.
+     *
+     * <p>{@code started_at} is nullable, and a saga with no start belongs to no
+     * instant rather than to the beginning of time, so those rows are excluded.
+     */
+    @Query(value = """
+            SELECT status, COUNT(*) FROM saga_states
+            WHERE started_at IS NOT NULL AND started_at <= :asOf
+            GROUP BY status
+            """, nativeQuery = true)
+    List<Object[]> countByStatusStartedBefore(@Param("asOf") Instant asOf);
+
+    /**
+     * Saga headers for the sagas that had started by {@code asOf}, in the same
+     * shape as {@link #findAllHeaders()} and carrying the same caveat: the status
+     * is the saga's current one, not the one it held at the cutoff.
+     *
+     * <p>Steps are omitted for the same reason as the live list — the list view
+     * renders none, and selecting them drags every step row along.
+     */
+    @Query("""
+            SELECT s.transactionId AS transactionId,
+                   s.status AS status,
+                   s.sourceAccountId AS sourceAccountId,
+                   s.destinationAccountId AS destinationAccountId,
+                   s.amount AS amount,
+                   s.startedAt AS startedAt,
+                   s.completedAt AS completedAt,
+                   s.errorMessage AS errorMessage
+            FROM SagaStateEntity s
+            WHERE s.startedAt IS NOT NULL AND s.startedAt <= :asOf
+            """)
+    List<SagaHeader> findAllHeadersStartedBefore(@Param("asOf") Instant asOf);
 
     /**
      * Sagas started within {@code (from, to]} whose current status is COMPLETED,

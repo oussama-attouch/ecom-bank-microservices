@@ -12,11 +12,15 @@ import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.security.oauth2.server.resource.web.server.authentication.ServerBearerTokenAuthenticationConverter;
 import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.springframework.security.web.server.authentication.ServerAuthenticationConverter;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
+import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.publisher.Mono;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
 
@@ -28,6 +32,17 @@ public class SecurityConfig {
     static final String USER_ID_HEADER = "X-User-Id";
     static final String USER_ROLES_HEADER = "X-User-Roles";
 
+    /**
+     * Path of ledger-service's live event stream, as routed here. Must match
+     * {@code WebSocketConfig.ENDPOINT} in that service, since it is also what
+     * decides where a query-string token is accepted (see
+     * {@link #bearerTokenConverter()}).
+     */
+    static final String STREAM_PATH_SUFFIX = "/ws/events";
+
+    /** Query parameter a WebSocket client has to use in place of a header. */
+    static final String ACCESS_TOKEN_PARAM = "access_token";
+
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
         return http
@@ -36,9 +51,45 @@ public class SecurityConfig {
                 .pathMatchers("/actuator/**", "/eureka/**").permitAll()
                 .anyExchange().authenticated()
             )
-            .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {}))
+            .oauth2ResourceServer(oauth2 -> oauth2
+                .bearerTokenConverter(bearerTokenConverter())
+                .jwt(jwt -> {}))
             .addFilterAfter(headerInjectionFilter(), SecurityWebFiltersOrder.AUTHENTICATION)
             .build();
+    }
+
+    /**
+     * Reads the bearer token from the query string, but only on a WebSocket
+     * handshake for the live event stream.
+     *
+     * <p>The browser WebSocket API cannot set request headers — {@code new
+     * WebSocket(url, protocols)} takes a URL and a subprotocol list and nothing
+     * else — so the stream cannot be authenticated the way every other call is,
+     * with {@code Authorization: Bearer …}. The gateway has to accept the
+     * alternative, because {@code .anyExchange().authenticated()} would otherwise
+     * answer 401 to the handshake and leave the stream unreachable through the
+     * gateway: working on port 8085 directly and broken at the edge.
+     *
+     * <p>Accepting the query parameter everywhere would be a needless widening —
+     * a token in a URL ends up in access logs, browser history and referrers, and
+     * every non-browser caller can already send the header. So it is honoured
+     * only when the request is an {@code Upgrade: websocket} handshake for
+     * {@link #STREAM_PATH_SUFFIX}; every other exchange goes through the standard
+     * header-only converter, unchanged.
+     */
+    private ServerAuthenticationConverter bearerTokenConverter() {
+        ServerBearerTokenAuthenticationConverter headerOnly = new ServerBearerTokenAuthenticationConverter();
+        ServerBearerTokenAuthenticationConverter allowQueryParameter = new ServerBearerTokenAuthenticationConverter();
+        allowQueryParameter.setAllowUriQueryParameter(true);
+        return exchange -> isStreamHandshake(exchange)
+                ? allowQueryParameter.convert(exchange)
+                : headerOnly.convert(exchange);
+    }
+
+    private static boolean isStreamHandshake(ServerWebExchange exchange) {
+        String upgrade = exchange.getRequest().getHeaders().getUpgrade();
+        return "websocket".equalsIgnoreCase(upgrade)
+                && exchange.getRequest().getPath().value().endsWith(STREAM_PATH_SUFFIX);
     }
 
     /**
@@ -55,6 +106,14 @@ public class SecurityConfig {
      * Downstream services make authorization decisions from these headers, so
      * this must fail closed: forwarding the exchange untouched when the
      * principal cannot be resolved hands the caller control of its own roles.
+     *
+     * <p>A third rewrite happens here for the same reason — controlling what
+     * reaches a downstream service — but about the credential rather than the
+     * identity: the query-string access token that a WebSocket handshake is
+     * allowed to use (see {@link #bearerTokenConverter()}) is removed from the
+     * forwarded URL. By this point it has been validated, no downstream service
+     * reads it, and a JWT left in a URL is a JWT in the next service's access
+     * log.
      *
      * <p>Two things about the previous implementation are worth recording,
      * because both were silent:
@@ -119,7 +178,29 @@ public class SecurityConfig {
                 }
                 return headers;
             }
+
+            /** The credential has done its job by the time anything is forwarded. */
+            @Override
+            public URI getURI() {
+                return withoutAccessToken(super.getURI());
+            }
         };
         return exchange.mutate().request(decorated).build();
+    }
+
+    /**
+     * Returns {@code uri} with {@link #ACCESS_TOKEN_PARAM} removed, or the same
+     * URI when it never had one — which is every request except a stream
+     * handshake, so the common path allocates nothing.
+     */
+    private static URI withoutAccessToken(URI uri) {
+        String query = uri.getRawQuery();
+        if (query == null || !query.contains(ACCESS_TOKEN_PARAM)) {
+            return uri;
+        }
+        return UriComponentsBuilder.fromUri(uri)
+                .replaceQueryParam(ACCESS_TOKEN_PARAM)
+                .build(true)
+                .toUri();
     }
 }

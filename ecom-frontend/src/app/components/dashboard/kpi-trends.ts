@@ -166,7 +166,10 @@ export function trendTooltip(source: TrendSource, trend: KpiTrend | null | undef
   if (!hasTrendPercentage(trend)) {
     return source.noBaselineNote ?? 'No value 7 days ago, so there is no percentage to show';
   }
-  const format = (value: number) =>
+  // Nullable because a trend can carry no value: the SLA card's window may hold
+  // no samples. `Number(null)` is 0, which is only ever reached here alongside a
+  // `previous` that has already passed the `> 0` baseline check.
+  const format = (value: number | null) =>
     source.prefix +
     Number(value).toLocaleString('en-US', {
       minimumFractionDigits: source.decimals,

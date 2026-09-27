@@ -1,6 +1,7 @@
 package att.ossama.ledgerservice.dashboard;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -16,13 +17,16 @@ import java.util.List;
  * @param dailyFlow          money in and out per day, by account leg, oldest first
  * @param balanceDistribution the ten largest account balances
  * @param sagaBreakdown      saga counts by terminal status
+ * @param historyStart       the earliest instant the ledger holds, or null for an
+ *                           empty log
  */
 public record ChartSeries(
         String range,
         List<DailyVolume> dailyVolume,
         List<DailyFlow> dailyFlow,
         List<AccountBalance> balanceDistribution,
-        SagaBreakdown sagaBreakdown) {
+        SagaBreakdown sagaBreakdown,
+        Instant historyStart) {
 
     /** One point of the volume chart. */
     public record DailyVolume(String date, long count) {

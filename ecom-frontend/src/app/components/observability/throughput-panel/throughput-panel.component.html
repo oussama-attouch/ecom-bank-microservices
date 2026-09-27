@@ -1,0 +1,49 @@
+<!--
+  Throughput. Every number here counts what was *received*, not what is on
+  screen: the buffer drops events the view never showed, so the totals are the
+  honest measure of the stream's rate.
+-->
+<div class="panel-head">
+  <span class="panel-title">Throughput</span>
+  @if (current.lastEventAt) {
+    <span class="panel-since" title="Time on the most recently received event">last {{ current.lastEventAt | date: 'HH:mm:ss' }}</span>
+  }
+</div>
+
+<div class="headline">
+  <span class="headline-value">{{ current.total }}</span>
+  <span class="headline-label">events received</span>
+</div>
+
+<div class="stat-grid">
+  <div class="stat">
+    <span class="stat-value">{{ current.perSecond }}</span>
+    <span class="stat-label">per second</span>
+  </div>
+  <div class="stat">
+    <span class="stat-value">{{ current.visible }}<span class="stat-dim">/{{ current.buffered }}</span></span>
+    <span class="stat-label">shown / held</span>
+  </div>
+</div>
+
+<div class="legend">
+  <span class="legend-title">By source</span>
+  @if (legend.length === 0) {
+    <p class="legend-empty">Nothing received yet.</p>
+  } @else {
+    <ul class="legend-list">
+      @for (row of legend; track row.source) {
+        <li class="legend-row tone-{{ row.tone }}">
+          <span class="legend-dot"></span>
+          <span class="legend-label">{{ row.label }}</span>
+          <span class="legend-count">{{ row.count }}</span>
+        </li>
+      }
+    </ul>
+  }
+</div>
+
+<p class="buffer-note">
+  Keeping the newest {{ current.bufferSize }} events in memory; the feed shows
+  the newest {{ current.visible }}.
+</p>

@@ -1,0 +1,61 @@
+<!--
+  Timeline scrubber. Lives in the Command Center header beside the period
+  selector: the selector chooses how wide a window to measure, this chooses when
+  to measure it.
+
+  The control is a native range input (see the component's class notes for why),
+  so its value is a step index rather than a timestamp; the label below is the
+  instant that index names, which is the number the operator actually cares about.
+-->
+<div class="scrubber" [class.active]="!live">
+
+  <div class="scrubber-row">
+    <span class="scrubber-icon" aria-hidden="true">
+      <i class="pi" [class.pi-history]="!live" [class.pi-clock]="live"></i>
+    </span>
+
+    <label class="sr-only" for="ledger-scrubber">Ledger snapshot instant</label>
+    <input
+      id="ledger-scrubber"
+      class="scrubber-range"
+      type="range"
+      min="0"
+      [max]="steps"
+      step="1"
+      [(ngModel)]="sliderValue"
+      [disabled]="!ready"
+      [attr.aria-valuetext]="live ? 'Live' : (selected | date:'MMM d, y HH:mm')"
+      (ngModelChange)="sliderValue = $event" />
+
+    <!--
+      The shortcut out of snapshot mode. Rendered only while a snapshot is
+      active: a "Return to Live" button on a dashboard that is already live is
+      a control that does nothing, which is worse than no control.
+    -->
+    @if (!live) {
+      <p-button
+        label="Return to Live"
+        icon="pi pi-bolt"
+        severity="secondary"
+        size="small"
+        [text]="true"
+        (onClick)="returnToLive()"></p-button>
+    }
+  </div>
+
+  <!--
+    The instant under the handle. A live dashboard says "Live" rather than the
+    current time, because the current time is what the rest of the header's
+    "Updated Xs ago" already reports and printing it twice invites reading one as
+    the other.
+  -->
+  <div class="scrubber-value tabular-nums">
+    @if (!ready) {
+      <span class="muted">Loading history…</span>
+    } @else if (live) {
+      <span class="live-label"><span class="live-dot"></span>Live</span>
+    } @else {
+      <span>{{ selected | date:'MMM d, y HH:mm' }}</span>
+    }
+  </div>
+</div>

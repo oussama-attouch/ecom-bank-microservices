@@ -9,9 +9,12 @@ import att.ossama.ledgerservice.eventstore.EventStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -95,6 +98,39 @@ public class AccountProjection {
     /** The current balance of an account, derived by replay. */
     public double balance(String accountId) {
         return fold(accountId, eventStore.eventsForAccount(accountId)).balance();
+    }
+
+    /**
+     * Rebuild every account named by {@code events}, ordered by account id.
+     *
+     * <p>The batch counterpart of {@link #rebuild(String)}, and the reason it
+     * exists is the same as {@link AccountSummaries}: a caller that already holds
+     * the events it wants folded — the point-in-time snapshot, which reads one
+     * time-bounded slice of the log — must not then ask the store for each
+     * account's stream, which is the N+1 that made the list endpoint eleven
+     * seconds.
+     *
+     * <p>Folding is delegated to the same private {@link #fold} the single-account
+     * {@link #rebuild(String)} uses, so a snapshot's balance and a live balance
+     * are the same arithmetic by construction rather than by two implementations
+     * agreeing. Each returned state carries the events it was folded from, exactly
+     * as {@code rebuild} does; a caller that wants the list shape drops them, as
+     * {@link JpaAccountSummaries} does.
+     *
+     * <p>An account whose events all fall after the caller's cutoff is simply not
+     * in {@code events}, so it is not in the result — an account that did not
+     * exist yet at that instant has no state to report, which is the point of the
+     * exercise.
+     */
+    public List<AccountState> rebuildAllFrom(List<Event> events) {
+        Map<String, List<Event>> byAggregate = new LinkedHashMap<>();
+        for (Event event : events) {
+            byAggregate.computeIfAbsent(event.aggregateId(), id -> new ArrayList<>()).add(event);
+        }
+        return byAggregate.entrySet().stream()
+                .map(entry -> fold(entry.getKey(), entry.getValue()))
+                .sorted(Comparator.comparing(AccountState::accountId))
+                .toList();
     }
 
     private AccountState fold(String accountId, List<Event> events) {

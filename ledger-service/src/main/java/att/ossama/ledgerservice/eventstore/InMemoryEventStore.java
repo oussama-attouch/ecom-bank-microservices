@@ -61,6 +61,19 @@ public class InMemoryEventStore implements EventStore {
                 .toList();
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The log is already in memory, so this is the interface's default made
+     * direct: filtering the live list rather than copying it first.
+     */
+    @Override
+    public List<Event> allEventsBefore(Instant cutoff) {
+        return log.stream()
+                .filter(e -> e.getOccurredAt() != null && !e.getOccurredAt().isAfter(cutoff))
+                .toList();
+    }
+
     @Override
     public long count() {
         return log.size();

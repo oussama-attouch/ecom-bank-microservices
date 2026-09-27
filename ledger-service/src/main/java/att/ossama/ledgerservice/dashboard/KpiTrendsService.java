@@ -168,7 +168,40 @@ public class KpiTrendsService {
 
     /** The sixteen Command Center KPI trends, in the order the cards are rendered. */
     public KpiTrendsResponse trends(KpiRange range) {
-        Instant now = clock.instant();
+        return trends(range, clock.instant());
+    }
+
+    /**
+     * The same sixteen trends, anchored on {@code asOf} instead of now — the
+     * Command Center under the timeline scrubber.
+     *
+     * <p>This is the whole of the time-travel support the KPI pipeline needs, and
+     * the reason is structural rather than lucky: every aggregate underneath reads
+     * a {@link MeasureSpan}, whose {@code to} <em>is</em> "now". Both comparison
+     * windows, the sparkline axis and the cumulative level readings are all derived
+     * from this one instant, so anchoring them on a past one moves the entire
+     * sixteen-card grid coherently — the selected window, the window before it,
+     * and the standing totals all become "as they were then" together.
+     *
+     * <p>Under a snapshot, "the previous period" therefore means the period before
+     * the instant scrubbed to, not the period before today. That is the reading
+     * that makes the delta meaningful: it is still a like-for-like comparison of two
+     * equal windows, just of two older ones.
+     *
+     * <h2>The one card that cannot follow</h2>
+     * {@code dashboardSlaCompliance} is measured in this JVM by {@link
+     * SlaMetricsService}, whose hourly buckets begin when the process started and
+     * are retained for eight days. There is no record of what latency was on an
+     * arbitrary past date — the data never existed — so for a past {@code asOf}
+     * that service answers "no samples", and the card reports a level with no
+     * baseline rather than a fabricated percentage. This is a real gap in snapshot
+     * mode and is left visible on purpose: inventing a number here would be worse
+     * than showing that the measurement does not reach back that far.
+     *
+     * @param asOf the instant to read the ledger as of; must be in the past
+     */
+    public KpiTrendsResponse trends(KpiRange range, Instant asOf) {
+        Instant now = asOf;
         Instant from = range.from(now);
         Instant previousFrom = range.previousFrom(now);
         // A sparkline point is a calendar bucket, so the axis is built in the
@@ -266,10 +299,58 @@ public class KpiTrendsService {
                 percent(audit, hasPrevious),
                 // The SLA is measured in the JVM rather than in the database, so
                 // it is read from its own service and on its own 24-hour window.
-                trend(sla.compliancePercentBetween(slaWindowStart(now), now),
-                      sla.compliancePercentBetween(slaWindowStart(now).minus(Duration.ofDays(SLA_WINDOW_DAYS)),
-                              slaWindowStart(now)),
-                      slaSeries(now)));
+                slaTrend(now, slaSeries(now)));
+    }
+
+    /**
+     * The dashboard SLA card's trend, which is the one KPI whose window can hold
+     * no measurement at all.
+     *
+     * <p>Every other card reads a store that has been accumulating since the
+     * ledger began, so an empty window means a real zero: no postings, no sagas,
+     * no money moved. The SLA is counted in this JVM's memory instead, from the
+     * moment the process started, so an empty window can equally mean "the
+     * service was not running then" — and reporting that as 0% claims a total
+     * outage that never happened. Under the timeline scrubber this is the normal
+     * case rather than an edge one: every instant before this process started has
+     * no samples, so the card used to show a red, missed-target <b>0.0%</b> for
+     * the whole of history.
+     *
+     * <p>{@link SlaMetricsService#sampleCountBetween} is the distinction, and the
+     * class documents this exact obligation on {@code compliancePercentBetween}:
+     * "the caller is expected to check sampleCountBetween before presenting that
+     * as a measurement". The sparkline has always honoured it —
+     * {@link #slaSeries} leaves a gap rather than plotting a zero — and this is
+     * the same rule applied to the two numbers the card prints.
+     *
+     * <p>A window with no samples reports {@code null}, which the Command Center
+     * renders as "No data" and a dash. That is what the card is for: an
+     * unmeasurable period is not a failing one.
+     */
+    private KpiTrend slaTrend(Instant now, List<BigDecimal> history) {
+        Instant from = slaWindowStart(now);
+        Double current = slaPercentBetween(from, now);
+        if (current == null) {
+            // No measurement in the window, so there is nothing to report and
+            // nothing to compare against.
+            return new KpiTrend(null, null, null, history);
+        }
+        Double previous = slaPercentBetween(from.minus(Duration.ofDays(SLA_WINDOW_DAYS)), from);
+        return trend(current, previous, history);
+    }
+
+    /**
+     * The compliance share over a window, or {@code null} when nothing was
+     * recorded in it.
+     *
+     * <p>The response is boxed so the absent case stays absent rather than
+     * collapsing to zero, which is the whole point: {@code
+     * compliancePercentBetween} already answers 0 for an empty window, and only
+     * the sample count can say whether that 0 means "answered nothing in time" or
+     * "answered nothing at all".
+     */
+    private Double slaPercentBetween(Instant from, Instant to) {
+        return sla.sampleCountBetween(from, to) == 0 ? null : sla.compliancePercentBetween(from, to);
     }
 
     // -----------------------------------------------------------------------

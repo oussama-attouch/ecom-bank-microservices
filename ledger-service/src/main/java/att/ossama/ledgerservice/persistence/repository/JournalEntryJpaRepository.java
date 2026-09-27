@@ -14,6 +14,22 @@ public interface JournalEntryJpaRepository extends JpaRepository<JournalEntryEnt
 
     List<JournalEntryEntity> findByTransactionId(String transactionId);
 
+    /**
+     * Every entry posted at or before {@code cutoff}, newest first.
+     *
+     * <p>The journal's time-bounded read, for the timeline scrubber. Ordered to
+     * match {@code JpaJournalEntryRepository.findAll()}'s
+     * {@code createdAt DESC, id DESC} so a snapshot feed reads the same way as the
+     * live one rather than silently inverting — the scrubber's feed, and the
+     * {@code subList} page the controller takes off the front of it, both depend
+     * on newest-first.
+     *
+     * <p>{@code <=} inclusive, so an entry posted exactly at the instant asked
+     * about is part of the state at that instant. Served by
+     * {@code idx_journal_entries_created_at} (V3).
+     */
+    List<JournalEntryEntity> findByCreatedAtLessThanEqualOrderByCreatedAtDescIdDesc(Instant cutoff);
+
     List<JournalEntryEntity> findByDebitAccountIdOrCreditAccountId(String debitAccountId, String creditAccountId);
 
     /**

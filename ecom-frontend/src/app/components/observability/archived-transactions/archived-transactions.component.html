@@ -1,0 +1,132 @@
+<div class="page-head">
+  <div class="title-block">
+    <h2>Archived Transactions</h2>
+    <p class="page-sub">
+      The ledger publishes committed transactions to the <code>ledger-events</code> topic; the
+      billing service consumes them and archives each one. This is that archive — the pipeline's
+      persistent output, not a live view of it.
+    </p>
+  </div>
+  <div class="head-tools">
+    <p-button
+      label="Refresh"
+      icon="pi pi-refresh"
+      severity="secondary"
+      [outlined]="true"
+      [loading]="loading"
+      title="Re-read the archive from billing-service"
+      (onClick)="reload()"></p-button>
+    <p-button
+      label="Export CSV"
+      icon="pi pi-download"
+      severity="secondary"
+      [outlined]="true"
+      title="Download the rows currently shown"
+      (onClick)="exportCsv()"></p-button>
+  </div>
+</div>
+
+@if (loading) {
+  <app-kpi-skeleton [count]="4"></app-kpi-skeleton>
+} @else {
+  <!-- Summary reads the whole archive, not the filtered view: it answers "what
+       has Kafka delivered", which would otherwise change under a filter. -->
+  <div class="summary-bar">
+    <div class="sum">
+      <label>Archived</label>
+      <span>{{ rows.length }}</span>
+    </div>
+    <div class="sum">
+      <label>Transfers</label>
+      <span>{{ transferCount }}</span>
+    </div>
+    <div class="sum">
+      <label title="Sum of every archived transaction">Total volume</label>
+      <span class="tabular-nums">{{ totalVolume | number:'1.2-2' }}</span>
+    </div>
+    <div class="sum">
+      <label>Newest</label>
+      <span class="newest">{{ newestLabel }}</span>
+    </div>
+  </div>
+}
+
+<div class="form-row">
+  <select [(ngModel)]="typeFilter" aria-label="Filter by transaction type">
+    <option value="">All types</option>
+    <option value="CREDIT">CREDIT</option>
+    <option value="DEBIT">DEBIT</option>
+    <option value="TRANSFER">TRANSFER</option>
+  </select>
+  <input type="text" [(ngModel)]="accountFilter" placeholder="Filter by account" aria-label="Filter by account">
+  <input type="date" [(ngModel)]="dateFrom" aria-label="Archived from">
+  <input type="date" [(ngModel)]="dateTo" aria-label="Archived to">
+  <input type="number" [(ngModel)]="minAmount" placeholder="Min amount" aria-label="Minimum amount">
+  <input type="number" [(ngModel)]="maxAmount" placeholder="Max amount" aria-label="Maximum amount">
+  <p-button label="Clear" severity="secondary" icon="pi pi-filter-slash" (onClick)="clearFilters()"></p-button>
+</div>
+
+@if (loading) {
+  <app-table-skeleton [rows]="8" [cols]="6"></app-table-skeleton>
+} @else {
+  <!-- ISO-8601 is fixed-width, so its lexicographic order is its chronological
+       order: sorting this string column needs no custom sortFunction, and the
+       default -1 puts the most recently archived transaction first. -->
+  <p-table [value]="filteredRows"
+           [paginator]="true"
+           [rows]="15"
+           [sortField]="'timestamp'"
+           [sortOrder]="-1"
+           responsiveLayout="scroll">
+    <ng-template pTemplate="header">
+      <tr>
+        <th pSortableColumn="timestamp" class="col-when">Archived at <p-sortIcon field="timestamp"></p-sortIcon></th>
+        <th>Transaction ID</th>
+        <th pSortableColumn="type">Type <p-sortIcon field="type"></p-sortIcon></th>
+        <th class="col-acct">From</th>
+        <th class="col-acct">To</th>
+        <th pSortableColumn="amount" class="num">Amount <p-sortIcon field="amount"></p-sortIcon></th>
+      </tr>
+    </ng-template>
+    <ng-template pTemplate="body" let-t>
+      <tr>
+        <td class="when" [title]="t.timestamp">{{ t.timestamp | date:'MMM d, y HH:mm:ss' }}</td>
+        <td>
+          @if (t.transactionId) {
+            <!-- routerLink, not href: navigation stays client-side. -->
+            <a [routerLink]="'/transactions/sagas/' + t.transactionId"
+               class="mono-id link"
+               [title]="t.transactionId">{{ short(t.transactionId) }}</a>
+          } @else {
+            <span class="mono-id">—</span>
+          }
+        </td>
+        <td><p-tag [value]="t.type || '—'" [severity]="typeSeverity(t.type)"></p-tag></td>
+        <td class="mono-id">{{ t.fromAccountId || '—' }}</td>
+        <td class="mono-id">{{ t.toAccountId || '—' }}</td>
+        <td class="num">{{ t.amount | number:'1.2-2' }}</td>
+      </tr>
+    </ng-template>
+    <ng-template pTemplate="emptymessage">
+      <tr>
+        <!-- accountId is deliberately not a column: it is null on every
+             transfer row, and fromAccountId/toAccountId carry the direction. -->
+        <td [attr.colspan]="6">
+          @if (rows.length === 0) {
+            <app-empty-state
+              icon="pi pi-inbox"
+              title="No archived transactions yet"
+              hint="Nothing has been consumed from the ledger-events topic so far. Complete a transfer and it will appear here."
+              ctaLabel="New Transfer"
+              ctaRoute="/banking/transfer-wizard"></app-empty-state>
+          } @else {
+            <app-empty-state
+              icon="pi pi-filter-slash"
+              title="No archived transactions match these filters"
+              hint="Clear the filters to see the full archive again."></app-empty-state>
+          }
+        </td>
+      </tr>
+    </ng-template>
+  </p-table>
+}
