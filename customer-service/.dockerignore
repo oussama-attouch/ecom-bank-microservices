@@ -1,0 +1,10 @@
+# Inert in practice: every image in this repo is built with the repo root as the
+# context (docker build -f <service>/Dockerfile .), and only the context root's
+# .dockerignore is read. This file exists so the module is still correctly
+# scoped if it is ever built on its own.
+target/
+node_modules/
+.git/
+.idea/
+*.iml
+*.log

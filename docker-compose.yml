@@ -1,4 +1,41 @@
 services:
+  # ---------------------------------------------------------------------------
+  # Postgres 16 for ledger-service — the one service in the stack that does not
+  # use H2. Port 5433, not 5432, because a host Postgres often already owns 5432.
+  #
+  # The credentials here are the same literals ledger-service falls back to in
+  # application.properties (`jdbc:postgresql://localhost:5433/ledger_db`, user
+  # and password `ledger`), so the service connects with no overrides at all.
+  # Keep the two in step: changing a value here without changing the fallback
+  # there turns a working stack into a `SQL State: 08001` on startup.
+  #
+  # The named volume is the point of declaring this here rather than running
+  # `docker run` by hand. Without one, Postgres keeps its data in the container's
+  # writable layer and `docker compose down` destroys a seeded ledger, which
+  # costs a full reseed (the portfolio mode writes ~40,000 transactions) to get
+  # back.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: ledger-postgres
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: ledger
+      POSTGRES_PASSWORD: ledger
+      POSTGRES_DB: ledger_db
+    volumes:
+      - ledger-postgres-data:/var/lib/postgresql/data
+    # ledger-service runs Flyway before it finishes starting, so a Postgres that
+    # is still initialising its cluster reads as a connection failure and the
+    # service exits. This lets `docker compose up -d --wait` mean what it says.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledger -d ledger_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.1
     container_name: zookeeper
@@ -66,3 +103,6 @@ services:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
     depends_on:
       - kafka
+
+volumes:
+  ledger-postgres-data:

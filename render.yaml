@@ -1,0 +1,180 @@
+# ---------------------------------------------------------------------------
+# Render Blueprint — free tier only.
+#
+# Apply with: Render Dashboard → New → Blueprint → pick this repo and the
+# `deploy` branch. Every `sync: false` below is a value only the owner can
+# supply; the Blueprint prompts for each one during creation.
+#
+# Five services, in the order they have to come up:
+#
+#   ecom-discovery   Eureka registry. Everything else registers here, so it is
+#                    the one service whose hostname is hardcoded in the others.
+#   ecom-keycloak    Identity provider, on Aiven Postgres.
+#   ecom-ledger      Event store and dashboard API, on Aiven Postgres.
+#   ecom-gateway     Single entry point: JWT validation + routing by service id.
+#   ecom-billing     Archives ledger transactions. Included because the
+#                    Archived Transactions page has no other source, and it is
+#                    the consumer side of the ledger's Kafka path.
+#
+# Deliberately NOT deployed: customer-, inventory- and order-service. All three
+# keep their data in H2 in-memory databases (config-repo/*-service.properties
+# all set jdbc:h2:mem: with DB_CLOSE_DELAY=-1), and the free plan spins a
+# service down after 15 minutes idle. A service whose entire dataset is in
+# memory loses it on every spin-down, so a deployed customer-service would come
+# back empty and dashboard pages that read it would render zeros — and,
+# because ledger-service looks customers up by id, would break transfers for
+# accounts that referenced them. Deploying them needs a real datastore first.
+# ---------------------------------------------------------------------------
+
+services:
+  # -------------------------------------------------------------------------
+  # Eureka registry
+  # -------------------------------------------------------------------------
+  # Hostname is the anchor for every other service's EUREKA_DEFAULT_ZONE. If
+  # Render assigns a suffixed hostname (because `ecom-discovery` is taken), the
+  # four EUREKA_DEFAULT_ZONE values below and environment.prod.ts have to be
+  # updated to match — a registry nobody can find fails silently, as services
+  # stay up and simply never appear in it.
+  - type: web
+    name: ecom-discovery
+    runtime: docker
+    dockerfilePath: ./discovery-service/Dockerfile
+    # Built from the repo root: the Dockerfile needs the aggregator pom and
+    # every sibling pom, and the root .dockerignore keeps that context small.
+    dockerContext: .
+    plan: free
+    branch: deploy
+    healthCheckPath: /actuator/health
+    envVars:
+      # No SPRING_PROFILES_ACTIVE here, and that is deliberate: this service
+      # does not register with or fetch from Eureka
+      # (eureka.client.register-with-eureka=false, fetch-registry=false), so it
+      # has no hostname or registry URL to derive from the environment. The one
+      # setting the deployment needs — eureka.instance.prefer-ip-address=false —
+      # is in its default application.properties, because it is equally correct
+      # locally.
+      - key: JAVA_TOOL_OPTIONS
+        value: "-XX:MaxRAMPercentage=75.0 -XX:+UseSerialGC -XX:TieredStopAtLevel=1"
+
+  # -------------------------------------------------------------------------
+  # Keycloak
+  # -------------------------------------------------------------------------
+  # Backed by Aiven Postgres rather than Render's own Postgres: the free
+  # Render database expires after 30 days, and the identity provider losing its
+  # realm on day 30 is a worse failure than the extra setup step.
+  #
+  # KC_HOSTNAME is set explicitly instead of relying on KC_PROXY=edge and
+  # KC_HOSTNAME_STRICT=false. The issuer in the discovery document has to be
+  # byte-identical to the issuer the gateway validates against
+  # (KEYCLOAK_ISSUER_URI, and `authority` in environment.prod.ts); if Keycloak
+  # derives it from the inbound request instead, any difference in how a caller
+  # reaches the service produces a token the gateway rejects with an opaque
+  # signature/issuer error.
+  - type: web
+    name: ecom-keycloak
+    runtime: docker
+    dockerfilePath: ./keycloak-deploy/Dockerfile
+    dockerContext: ./keycloak-deploy
+    plan: free
+    branch: deploy
+    healthCheckPath: /health/ready
+    envVars:
+      - key: KC_HOSTNAME
+        value: https://ecom-keycloak.onrender.com
+      # Aiven gives a postgres://service-uri; Keycloak needs the JDBC form.
+      # Convert it: jdbc:postgresql://<host>:<port>/<db>?sslmode=require
+      - key: KC_DB_URL
+        sync: false
+      - key: KC_DB_USERNAME
+        sync: false
+      - key: KC_DB_PASSWORD
+        sync: false
+
+  # -------------------------------------------------------------------------
+  # Ledger
+  # -------------------------------------------------------------------------
+  - type: web
+    name: ecom-ledger
+    runtime: docker
+    dockerfilePath: ./ledger-service/Dockerfile
+    dockerContext: .
+    plan: free
+    branch: deploy
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      # Aiven Postgres. Must keep ?sslmode=require — Aiven refuses a plaintext
+      # connection outright.
+      - key: LEDGER_DB_URL
+        sync: false
+      - key: LEDGER_DB_USER
+        sync: false
+      - key: LEDGER_DB_PASSWORD
+        sync: false
+      # Pinned rather than left to the default, so a future change to the
+      # default cannot silently switch this deployment onto a broker that does
+      # not exist here. The publisher's producer is built in
+      # KafkaProducerConfig, which reads ledger.kafka.bootstrap-servers and sets
+      # no SASL properties, so `kafka` would open a PLAINTEXT connection — see
+      # the note on Aiven Kafka in README-DEPLOY.md Step 2.
+      - key: LEDGER_PUBLISHER
+        value: http
+      - key: EUREKA_DEFAULT_ZONE
+        value: https://ecom-discovery.onrender.com/eureka
+      - key: JAVA_TOOL_OPTIONS
+        value: "-XX:MaxRAMPercentage=75.0 -XX:+UseSerialGC -XX:TieredStopAtLevel=1"
+
+  # -------------------------------------------------------------------------
+  # Gateway
+  # -------------------------------------------------------------------------
+  # Public entry point for the Vercel frontend, which proxies its
+  # /<service>/… calls here (see ecom-frontend/vercel.json). That same-origin
+  # proxy is also why the gateway's globalcors — which allows only
+  # http://localhost:4200 — does not have to be widened for the deployment.
+  - type: web
+    name: ecom-gateway
+    runtime: docker
+    dockerfilePath: ./gateway-service/Dockerfile
+    dockerContext: .
+    plan: free
+    branch: deploy
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      # Must equal KC_HOSTNAME above plus /realms/ecom-bank.
+      - key: KEYCLOAK_ISSUER_URI
+        value: https://ecom-keycloak.onrender.com/realms/ecom-bank
+      - key: EUREKA_DEFAULT_ZONE
+        value: https://ecom-discovery.onrender.com/eureka
+      - key: JAVA_TOOL_OPTIONS
+        value: "-XX:MaxRAMPercentage=75.0 -XX:+UseSerialGC -XX:TieredStopAtLevel=1"
+
+  # -------------------------------------------------------------------------
+  # Billing (archived transactions)
+  # -------------------------------------------------------------------------
+  # Has no datasource of its own — it consumes ledger events into H2 in memory
+  # and serves the archive endpoint, which is why a spin-down empties the
+  # Archived Transactions page until new events arrive. That is a known
+  # trade-off, documented in README-DEPLOY.md.
+  #
+  # No Kafka configuration here. On this deployment the archive is fed over HTTP
+  # by the saga's notification, and billing's dead-letter producer cannot reach
+  # Aiven anyway (KafkaConsumerConfig.producerFactory sets bootstrap.servers and
+  # no security properties). See README-DEPLOY.md Step 2.
+  - type: web
+    name: ecom-billing
+    runtime: docker
+    dockerfilePath: ./billing-service/Dockerfile
+    dockerContext: .
+    plan: free
+    branch: deploy
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: EUREKA_DEFAULT_ZONE
+        value: https://ecom-discovery.onrender.com/eureka
+      - key: JAVA_TOOL_OPTIONS
+        value: "-XX:MaxRAMPercentage=75.0 -XX:+UseSerialGC -XX:TieredStopAtLevel=1"

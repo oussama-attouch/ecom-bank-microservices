@@ -1,0 +1,39 @@
+# Docker build context for the backend images, which are all built from the
+# repo root (see <service>/Dockerfile). Without this file the daemon receives
+# the whole working tree on every build — 4.06 GB here, almost all of it
+# node_modules, target/ and the Angular dist — for images whose payload is a
+# few tens of MB. The build only needs the poms, each module's src/, and
+# config-repo/.
+#
+# Only the context root's .dockerignore is honoured: BuildKit reads the file at
+# the root of the context and nowhere else, so the per-module copies are inert
+# unless a module is ever built with itself as the context.
+
+# Build output and dependencies: never inputs to a build.
+**/node_modules
+**/target
+**/dist
+**/.angular
+
+# VCS and editor state.
+**/.git
+**/.idea
+**/.vscode
+
+# The frontend is built and deployed by Vercel, not by any of these images.
+ecom-frontend/
+
+# Documentation and notes are not on any classpath.
+docs/
+*.md
+
+# Root-level Node tooling (seed-data.js/ts and their lockfiles) belongs to the
+# local seeding workflow, not to a service image.
+node_modules/
+src/
+.gitignore
+
+# Keycloak's realm export is mounted by docker-compose for local dev and copied
+# into the image by keycloak-deploy/Dockerfile, which uses that directory as its
+# own context — neither path reads it from this one.
+keycloak/

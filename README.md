@@ -9,6 +9,10 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue)](https://www.postgresql.org/)
 [![Keycloak](https://img.shields.io/badge/Keycloak-26-blueviolet)](https://www.keycloak.org/)
 
+> **Deploying this stack?** [README-DEPLOY.md](./README-DEPLOY.md) is a
+> clone-to-live-URL guide for running it on free tiers — Render, Vercel and
+> Aiven — including what is deliberately not deployed and why.
+
 ---
 
 ## Table of Contents
@@ -378,6 +382,22 @@ docker-compose up -d
 | Keycloak | 8180 | Identity provider |
 | Postgres | 5433 | Ledger database |
 
+> **If you are coming from an older checkout:** Postgres used to be started by
+> hand, so you may already have a `ledger-postgres` container that compose does
+> not manage — running it will now collide with the `postgres` service above on
+> port 5433. Adopt the compose-managed one once, which also gives the ledger a
+> named volume so `docker compose down` no longer destroys its data:
+>
+> ```bash
+> docker rm -f ledger-postgres          # discard the hand-started container
+> docker compose up -d postgres
+> docker compose logs postgres          # wait for "database system is ready"
+> ```
+>
+> That container's data lived in its writable layer, so it goes with it. Re-seed
+> with [§12](#12-seed-2-years-of-history) (~7 minutes) or start from an empty
+> ledger.
+
 ### 10.3 Build and Start the 8 Services
 
 ```bash
@@ -477,6 +497,7 @@ ecom-app-microservices-main/
 
 | Document | Purpose |
 |---|---|
+| [README-DEPLOY.md](./README-DEPLOY.md) | Free-tier deployment — Render, Vercel, Aiven; secrets to fill in, verification checklist, known trade-offs |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | System topology, saga sequence, event sourcing, Kafka topology, auth flow, data model, engineering decisions |
 | [docs/DESIGN-BRIEF.md](./docs/DESIGN-BRIEF.md) | UI design system — palette, typography, component specs |
 | [docs/UI-AUDIT.md](./docs/UI-AUDIT.md) | Bug audit and remediation log |

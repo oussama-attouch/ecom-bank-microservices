@@ -11,6 +11,7 @@ import { routes } from './app.routes';
 import { loadingInterceptor } from './services/loading.interceptor';
 import { errorInterceptor } from './services/error.interceptor';
 import { authInterceptor } from './interceptors/auth.interceptor';
+import { environment } from '../environments/environment';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -26,10 +27,15 @@ export const appConfig: ApplicationConfig = {
     }),
     provideAuth({
       config: {
-        authority: 'http://localhost:8180/realms/ecom-bank',
+        // From src/environments/environment.ts, which the production build
+        // swaps for environment.prod.ts (see fileReplacements in angular.json).
+        // It has to be per-environment: this is where the browser is redirected
+        // to log in, and the deployed realm is a different origin from the
+        // compose container on :8180.
+        authority: environment.keycloakUrl,
         redirectUrl: window.location.origin + '/callback',
         postLogoutRedirectUri: window.location.origin,
-        clientId: 'ecom-frontend',
+        clientId: environment.keycloakClientId,
         scope: 'openid profile email',
         responseType: 'code',
         silentRenew: true,

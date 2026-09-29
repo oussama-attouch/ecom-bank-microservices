@@ -1,0 +1,32 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "angular",
+  "buildCommand": "npx ng build --configuration production",
+  "outputDirectory": "dist/ecom-frontend/browser",
+  "rewrites": [
+    {
+      "source": "/ledger-service/:path*",
+      "destination": "https://ecom-gateway.onrender.com/ledger-service/:path*"
+    },
+    {
+      "source": "/billing-service/:path*",
+      "destination": "https://ecom-gateway.onrender.com/billing-service/:path*"
+    },
+    {
+      "source": "/customer-service/:path*",
+      "destination": "https://ecom-gateway.onrender.com/customer-service/:path*"
+    },
+    {
+      "source": "/inventory-service/:path*",
+      "destination": "https://ecom-gateway.onrender.com/inventory-service/:path*"
+    },
+    {
+      "source": "/order-service/:path*",
+      "destination": "https://ecom-gateway.onrender.com/order-service/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
