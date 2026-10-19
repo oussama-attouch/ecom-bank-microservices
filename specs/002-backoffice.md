@@ -284,8 +284,12 @@ scope (§Out of scope), so this delay is documented rather than fixed.
   that names it). The realm change is `keycloak/realm-export.json` plus the
   documented `--force-recreate keycloak`.
 - **The service-account roles must survive the realm import.** `ecom-backoffice`
-  needs `serviceAccountsEnabled: true` and the `realm-management` client roles
-  `view-users`, `query-users` and `manage-users` on its service-account user.
+  needs `serviceAccountsEnabled: true` and **four** `realm-management` client
+  roles on its service-account user: `view-users`, `query-users`,
+  `manage-users` and `view-realm`. `view-realm` is the non-obvious one — the
+  `GET /admin/realms/{realm}/users` endpoint answers with `view-users`, but
+  `GET /admin/realms/{realm}/roles/{role}/users` (the call that avoids the N+1
+  in §3) answers **403** without it. Measured on Keycloak 26, not assumed.
   A Keycloak export/import that omits the service-account user's `clientRoles`
   produces a client that authenticates successfully and then 403s on every
   admin call — the failure is silent and looks like a code bug. Verify by

@@ -9,6 +9,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.ClientResponse;
@@ -95,8 +96,13 @@ public class KeycloakAdminClient {
     // Reads
     // ------------------------------------------------------------------
 
-    /** One page of users; {@code search} is Keycloak's substring search. */
-    public Mono<List<KeycloakUser>> listUsers(String search, int first, int max) {
+    /**
+     * One page of users; {@code search} is Keycloak's substring search.
+     *
+     * <p>Carries {@code X-Total-Count} back to the caller: the endpoint is paged,
+     * so the total number of matches is not derivable from the rows returned.
+     */
+    public Mono<KeycloakUserPage> listUsers(String search, int first, int max) {
         Optional<String> term = Optional.ofNullable(search)
                 .map(String::trim)
                 .filter(value -> !value.isEmpty());
@@ -110,9 +116,27 @@ public class KeycloakAdminClient {
                 .headers(headers -> headers.setBearerAuth(token))
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, KeycloakAdminClient::asAdminException)
-                .bodyToFlux(KeycloakUser.class)
-                .collectList()
+                .toEntity(KeycloakUser[].class)
+                .map(entity -> new KeycloakUserPage(asList(entity.getBody()), totalOf(entity)))
                 .timeout(REQUEST_TIMEOUT));
+    }
+
+    private static List<KeycloakUser> asList(KeycloakUser[] body) {
+        return body == null ? List.of() : List.of(body);
+    }
+
+    private static long totalOf(ResponseEntity<KeycloakUser[]> entity) {
+        String header = entity.getHeaders().getFirst("X-Total-Count");
+        if (header != null) {
+            try {
+                return Long.parseLong(header.trim());
+            } catch (NumberFormatException ignored) {
+                // Fall through: a page size is a worse total than the header, but
+                // better than failing the call over a header.
+            }
+        }
+        KeycloakUser[] body = entity.getBody();
+        return body == null ? 0 : body.length;
     }
 
     /**

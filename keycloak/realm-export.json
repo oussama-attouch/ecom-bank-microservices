@@ -18,6 +18,14 @@
       "directAccessGrantsEnabled": true,
       "redirectUris": ["http://localhost:4200/*"],
       "webOrigins": ["http://localhost:4200"]
+    },
+    {
+      "clientId": "ecom-backoffice",
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "secret": "backoffice-secret"
     }
   ],
   "users": [
@@ -50,6 +58,14 @@
       "emailVerified": true,
       "credentials": [{ "type": "password", "value": "auditor123" }],
       "realmRoles": ["AUDITOR"]
+    },
+    {
+      "username": "service-account-ecom-backoffice",
+      "enabled": true,
+      "serviceAccountClientId": "ecom-backoffice",
+      "clientRoles": {
+        "realm-management": ["view-users", "query-users", "manage-users", "view-realm"]
+      }
     }
   ]
 }
