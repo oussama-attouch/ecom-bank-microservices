@@ -7,13 +7,16 @@
 ## 1. Current Branch & Status
 
 - **Branch:** `feature/workflow-scaffolding`
-- **Tip:** this commit — `docs: update Kafka topology to reflect DLT consumer implementation`.
-- **Remote:** in sync with `origin/feature/workflow-scaffolding` (nothing unpushed)
-- **Working tree:** clean
+- **Tip:** this commit — `chore: close backoffice milestone`.
+- **Remote:** in sync with `origin/feature/workflow-scaffolding`
+- **Working tree:** clean, and the branch is **ready to merge into `main`**
+  (11 commits ahead; `main` has not moved since `ae59999`, so it fast-forwards).
 
 **What is on this branch:** the workflow scaffolding (`AGENTS.md`,
-`docs/CONTEXT/`, `specs/` templates, `docs/MEMORY.md`) and the first feature
-delivered through it — the `ledger-events.DLT` consumer in `billing-service`.
+`docs/CONTEXT/`, `specs/` templates, `docs/MEMORY.md`) plus two features
+delivered through it — the `ledger-events.DLT` consumer in `billing-service`,
+and **Backoffice access administration** (gateway facade, Keycloak realm
+client, and an Angular page for `MANAGER`).
 
 **DLT consumer status: IMPLEMENTED** (`86d3036 feat(kafka): implement
 ledger-events.DLT consumer`). Poison messages that exhaust the main listener's
@@ -83,28 +86,55 @@ version change, without an ADR. Schema is owned by Flyway in `ledger-service`;
 | **CI workflow + IDE-backup ignores** | `e99bf7a` | Done, on this branch |
 | **DLT consumer spec drafted** — `specs/001-dlt-consumer.md`, a full design for consuming `ledger-events.DLT` so poison messages become inspectable rows | `a017ff7` | Done |
 | **DLT consumer implemented** — listener on `ledger-events.DLT`, group `billing-service-dlt`, rows written to `dead_letter_transactions` | `86d3036` | Done, on this branch |
-| **Docs realigned with the implementation** — `ARCHITECTURE.md` §5, `README.md` features / known gaps / future work | this commit | Done |
+| **Docs realigned with the implementation** — `ARCHITECTURE.md` §5, `README.md` features / known gaps / future work | `87d9344` | Done |
+| **Backoffice spec written and approved** — `specs/002-backoffice.md` | `9775265` | Done |
+| **Gateway role enforcement** — realm roles → `ROLE_*` authorities; `/backoffice/**` and e-commerce writes MANAGER-only, reads unchanged | `e747f35` | Done |
+| **Keycloak admin client** — client-credentials token, cached with single-flight refresh | `c4c4826` | Done |
+| **Backoffice API and realm client** — `ecom-backoffice` service account; list / edit roles / enable-disable with lockout guards | `749daf7` | Done |
+| **Backoffice UI** — `/backoffice/users`, nav link, proxy entry; Customers and Products hide writes from non-managers | `e596c50` | Done |
+| **Milestone closed** — Karma specs for the three failure states, docs and this snapshot updated, merged to `main` | this commit | Done |
 | **Live event streaming + archived transactions + observability** | merge `ae59999` | Done, inherited from `feature/live-event-stream` |
 | **Time-travel ledger queries + projection rebuild consistency check** | merge `ae59999` | Done, inherited from `feature/time-travel-ledger` |
 
 ## 5. Active Context
 
-The next phase adds a **Backoffice UI / Admin Panel** — an admin surface aimed
-at the `MANAGER` role, which the current frontend does not serve beyond the
-transfer wizard's role guard.
+**The Backoffice is complete** and this branch is ready to merge. `MANAGER` now
+has a page of its own at `/backoffice/users`, reachable from the
+"Administration → Backoffice" nav item (rendered only for managers) and behind
+`roleGuard(['MANAGER'])`.
 
-Existing frontend routes today: `dashboard`, `customers`, `products`, `orders`,
-`bills`, `banking`, `banking/transfer-wizard` (TELLER/MANAGER),
-`transactions`, `transactions/sagas`, `transactions/sagas/:id`,
-`transactions/journal`, `accounts/:id/statement`, `journal`,
-`observability/live`, `observability/archived`. There is **no** user
-management, system health, or admin CRUD surface among them.
+What changed beyond the page itself:
 
-Candidate scope (to be settled by a spec, not by code): Keycloak user
-management via the Keycloak Admin API; a system health / settings page
-surfacing Kafka lag and connection-pool status; and write-capable e-commerce
-CRUD where the existing pages are read-only.
+- **The gateway enforces roles for the first time.** `KeycloakRealmRoleConverter`
+  maps `realm_access.roles` to `ROLE_*` authorities; `/backoffice/**` requires
+  `ROLE_MANAGER`, and `POST`/`PUT`/`PATCH`/`DELETE` on `/customer-service/**`
+  and `/inventory-service/**` are MANAGER-only. Reads stay open to all three
+  roles, and the live stream's `?access_token=` WebSocket handshake still
+  matches `authenticated()` (verified: 101 with a token, 401 without).
+- **Customers and Products hide their write controls** from non-managers, so a
+  teller or auditor no longer sees buttons that would answer 403.
+- **The gateway holds the Keycloak admin credential.** The `ecom-backoffice`
+  confidential client authenticates with `client_credentials`; its service
+  account carries `view-users`, `query-users`, `manage-users` and `view-realm`.
+  `view-realm` is not optional — `roles/{role}/users`, the call that keeps the
+  user list from being an N+1, answers 403 without it.
+- The credential is a committed dev-only literal (`backoffice-secret`) in both
+  `keycloak/realm-export.json` and the gateway properties. A real deployment
+  must override `backoffice.keycloak.client-secret`.
 
-Per §3, the next milestone begins by writing `specs/002-backoffice.md` — no
-Angular components and no gateway routes until that spec exists and is
-accepted.
+Frontend routes now include `backoffice/users`; every other route is unchanged.
+
+**Open work, in priority order:**
+
+1. The DLT consumer's broker path is still unproven end to end — the unit and
+   context suites are green, but no live poison message has been driven through
+   `ledger-events.DLT` into `dead_letter_transactions`.
+2. Candidate next features, each needing a spec first: a dead-letter operations
+   view over `dead_letter_transactions`; a service health / feature-flag
+   inventory page; four-eyes approval for high-value transfers.
+3. Known limitation, documented rather than fixed: role and enablement changes
+   reach a user at their next sign-in — up to 15 minutes (`accessTokenLifespan
+   900`) — because no service re-checks Keycloak per request.
+
+Per §3, the next milestone begins by writing a spec in `specs/`; no code until
+it exists and is accepted.

@@ -127,7 +127,7 @@ The dashboard displays a real-time `LEDGER BALANCED` indicator. If it ever turns
 | Layer | Responsibility | Failure mode it prevents |
 |---|---|---|
 | **Frontend (Angular)** | `roleGuard` blocks routes; hides buttons | Poor UX — user sees actions they can't take |
-| **Gateway (Spring Cloud Gateway)** | Validates JWT; strips client-supplied `X-User-Id`/`X-User-Roles`; injects trusted headers | Token forgery, header spoofing |
+| **Gateway (Spring Cloud Gateway)** | Validates JWT; strips client-supplied `X-User-Id`/`X-User-Roles`; injects trusted headers; **enforces `MANAGER` on the backoffice and on e-commerce writes** | Token forgery, header spoofing, a teller editing customers |
 | **Backend (ledger-service)** | `TransferLimitPolicy` rejects TELLER transfers > $10,000 at the API | A valid token that bypasses the UI |
 
 ---
@@ -245,6 +245,8 @@ Drag the scrubber to any past instant and the whole Command Center describes it.
 | 📨 **Kafka exactly-once semantics** | `acks=all`, `enable.idempotence`, manual ack, DLT for poison messages |
 | ☠️ **Poison-message persistence** | A second consumer group (`billing-service-dlt`) reads `ledger-events.DLT` and stores each failure — payload verbatim, exception, original topic/partition/offset — in H2 `dead_letter_transactions`, so "what failed" is as inspectable as "what succeeded" |
 | 🔐 **Keycloak RBAC** | 3 roles enforced across frontend, gateway, and backend |
+| 🛡️ **Backoffice access administration** | `MANAGER` lists Keycloak users, assigns `TELLER`/`MANAGER`/`AUDITOR`, and enables or disables accounts — with guards that refuse to demote the caller or the last enabled manager |
+| 🚦 **Role-enforcing gateway** | Realm roles become `ROLE_*` authorities; `/backoffice/**` and customer/product **writes** are `MANAGER`-only, while reads stay open to every signed-in operator |
 | 💰 **$10K teller limit** | Enforced at the API, tested with curl |
 
 ### 6.2 Frontend (Angular 19 / PrimeNG)
@@ -258,6 +260,7 @@ Drag the scrubber to any past instant and the whole Command Center describes it.
 | ⏱️ **Time-travel scrubber** | Point-in-time queries reconstruct the entire dashboard from the event log |
 | 📡 **Live event stream** | WebSocket-based real-time visualization of saga and Kafka activity |
 | 📦 **Archived transactions** | Persistent view of every transaction consumed by `billing-service` |
+| 🛡️ **Backoffice** | `MANAGER`-only page to search users, edit their role checkboxes, and toggle sign-in; the write controls on Customers and Products disappear for everyone else |
 
 ### 6.3 Analytics (BI)
 
@@ -299,7 +302,7 @@ The read side needs ordered, replayable, partitioned delivery keyed by `transact
 
 ### 8.4 Why three layers of RBAC?
 
-The frontend guard is UX. The gateway is the trust boundary — it strips client-supplied identity headers before injecting trusted ones, and fails closed if no principal resolves. The backend enforces business rules that would otherwise be bypassable by curl. Each layer has a different job; none is redundant.
+The frontend guard is UX. The gateway is the trust boundary — it strips client-supplied identity headers before injecting trusted ones, and fails closed if no principal resolves. Since the Backoffice milestone it also enforces role rules there: `hasRole('MANAGER')` on `/backoffice/**` and on customer/product writes, derived from `realm_access.roles`, while reads stay open to every signed-in operator. The backend enforces business rules that would otherwise be bypassable by curl — the $10,000 teller limit depends on the amount, which the edge cannot see. Each layer has a different job; none is redundant.
 
 ### 8.5 Why BI metrics on a portfolio project?
 
@@ -324,8 +327,8 @@ The same event store enables a second verification: two independent implementati
 | `/api/accounts` query time | 10.8 s | 200 ms | **54× faster** |
 | KPI trends endpoint (7d) | 1.73 s | 679 ms | **2.5× faster** |
 | Event-store re-decodes per account-list request | ~102,000 | 0 | Eliminated |
-| Total backend tests | — | 238 | All passing |
-| Total frontend tests | — | 83 | All passing |
+| Total backend tests | — | 270 | All passing |
+| Total frontend tests | — | 107 | All passing |
 | Seed data (24-month history) | — | 500 customers · 1,100 accounts · 40,000 transactions | — |
 
 ### 9.2 Correctness Proofs
@@ -336,6 +339,7 @@ The same event store enables a second verification: two independent implementati
 | **Cross-path consistency** | `AUM(now) − AUM(1 year ago) = Net Cash Flow(1 year)` — two independent SQL paths agree to the penny |
 | **Compensation correctness** | Killed ledger-service mid-transfer; the ledger still balances after restart |
 | **RBAC enforcement** | TELLER `curl` with $15,000 gets HTTP 403; MANAGER gets HTTP 200 |
+| **Edge authorization** | TELLER `POST /customer-service/api/customers` gets HTTP 403 and MANAGER passes, while `GET` returns 200 for both |
 
 ### 9.3 What's NOT Done (documented, not hidden)
 
