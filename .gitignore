@@ -55,3 +55,8 @@ application-secret.properties
 ### OS ###
 .DS_Store
 Thumbs.db
+
+### IDE backups ###
+# Stray copy of an IDE config directory, e.g. left behind by a rename or a
+# migration. Not the live .idea/ above, but the same kind of noise.
+.idea.old/
