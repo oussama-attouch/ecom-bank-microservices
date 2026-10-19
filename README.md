@@ -243,6 +243,7 @@ Drag the scrubber to any past instant and the whole Command Center describes it.
 | 🔄 **Saga orchestration** | `VALIDATE → DEBIT_SOURCE → CREDIT_DESTINATION → ARCHIVE`, with ordered compensation |
 | 📒 **Double-entry bookkeeping** | Paired journal entries; trial balance verified on startup |
 | 📨 **Kafka exactly-once semantics** | `acks=all`, `enable.idempotence`, manual ack, DLT for poison messages |
+| ☠️ **Poison-message persistence** | A second consumer group (`billing-service-dlt`) reads `ledger-events.DLT` and stores each failure — payload verbatim, exception, original topic/partition/offset — in H2 `dead_letter_transactions`, so "what failed" is as inspectable as "what succeeded" |
 | 🔐 **Keycloak RBAC** | 3 roles enforced across frontend, gateway, and backend |
 | 💰 **$10K teller limit** | Enforced at the API, tested with curl |
 
@@ -294,7 +295,7 @@ A ledger is where "how did we get here" matters as much as "what is true now." A
 
 ### 8.3 Why Kafka over RabbitMQ?
 
-The read side needs ordered, replayable, partitioned delivery keyed by `transactionId`. Kafka gives offset-based replay, first-class DLT support, and idempotent producers. A queue would discard ordering and replay position.
+The read side needs ordered, replayable, partitioned delivery keyed by `transactionId`. Kafka gives offset-based replay, first-class DLT support, and idempotent producers. A queue would discard ordering and replay position. The DLT is not a dumping ground either: a dedicated consumer group (`billing-service-dlt`) turns every parked poison message into a row in `dead_letter_transactions`, and its error handler is built without a recoverer so the DLT cannot grow a DLT.
 
 ### 8.4 Why three layers of RBAC?
 
@@ -341,7 +342,6 @@ The same event store enables a second verification: two independent implementati
 | Gap | Reason |
 |---|---|
 | Dev proxy bypasses the gateway | Services are reachable directly on ports 8081–8085. Production requires private network topology. |
-| DLT topic has no consumer | Poison messages are parked but not processed. |
 | H2 databases are in-memory | Customer / inventory / billing / order don't survive restarts (ledger data does). |
 | No customer self-service portal | This is an operations platform, not a retail banking app. |
 
@@ -490,7 +490,7 @@ Deliberately out of scope for this iteration:
 | Feature | Why it matters |
 |---|---|
 | **Customer self-service portal** | A `CUSTOMER` role scoped to their own accounts. Requires tenant-scoped authorization across every read endpoint. |
-| **DLT consumer** | A `@KafkaListener` on `ledger-events.DLT` that alerts on poison messages. |
+| **DLT alerting** | The consumer now persists poison messages to `dead_letter_transactions`, but nothing pages anyone: a row appearing is the signal. No email, webhook or PagerDuty, and no replay/redrive tool — the rows are evidence, not a queue to drain. |
 | **Persistent H2 → Postgres** | For customer / inventory / billing / order contexts. |
 | **mTLS between services** | Currently the gateway is the trust boundary; services trust its headers over the private network. |
 | **OpenTelemetry tracing** | Distributed traces across saga steps. |

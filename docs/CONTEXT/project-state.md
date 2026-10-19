@@ -7,32 +7,41 @@
 ## 1. Current Branch & Status
 
 - **Branch:** `feature/workflow-scaffolding`
-- **Tip:** this commit — `docs(context): add project state snapshot`. Parent is
-  `e99bf7a chore: ignore IDE backups and add CI workflow`.
+- **Tip:** this commit — `docs: update Kafka topology to reflect DLT consumer implementation`.
 - **Remote:** in sync with `origin/feature/workflow-scaffolding` (nothing unpushed)
 - **Working tree:** clean
 
-**What is done on this branch:** only the workflow scaffolding (`AGENTS.md`,
-`docs/CONTEXT/`, `specs/` templates, `docs/MEMORY.md`). No service code has
-changed on this branch.
+**What is on this branch:** the workflow scaffolding (`AGENTS.md`,
+`docs/CONTEXT/`, `specs/` templates, `docs/MEMORY.md`) and the first feature
+delivered through it — the `ledger-events.DLT` consumer in `billing-service`.
 
-**DLT consumer status: SPEC ONLY — NOT IMPLEMENTED.** This is the single most
-important correction to carry forward. `specs/001-dlt-consumer.md` describes the
-feature in full, but none of it exists in code:
+**DLT consumer status: IMPLEMENTED** (`86d3036 feat(kafka): implement
+ledger-events.DLT consumer`). Poison messages that exhaust the main listener's
+three retries are now persisted as inspectable rows instead of being parked
+invisibly on a topic:
 
-| Expected by the spec | Actual state |
+| Piece | Location |
 |---|---|
-| `DeadLetterTransaction` entity (`dead_letter_transactions`) | Does not exist |
-| `DeadLetterTransactionRepository` | Does not exist |
-| `DltKafkaConsumerConfig` / `dltListenerContainerFactory` | Does not exist |
-| `@KafkaListener` on `ledger-events.DLT` | Does not exist |
-| Consumer group `billing-service-dlt` | Does not exist |
+| `DeadLetterTransaction` entity — table `dead_letter_transactions` | `billing-service/.../entities/` |
+| `DeadLetterTransactionRepository` (`@RepositoryRestResource(exported = false)`) | `billing-service/.../repository/` |
+| `DltKafkaConsumerConfig` → `dltListenerContainerFactory` | `billing-service/.../kafka/` |
+| `DltTransactionEventConsumer` — `@KafkaListener` on `ledger-events.DLT` | `billing-service/.../kafka/` |
+| Consumer group `billing-service-dlt` | `spring.kafka.consumer.dlt-group-id` |
 
-Poison messages are still only parked on `ledger-events.DLT` by
-`DeadLetterPublishingRecoverer` (`KafkaConsumerConfig.java:80`) and are **not**
-persisted anywhere. Do not assume a `dead_letter_transactions` table is
-queryable. Both `ARCHITECTURE.md` and `README.md` still list "DLT topic has no
-consumer" as a known gap; that remains accurate until the spec is implemented.
+Guarantees that must not be regressed when touching this code:
+
+- The DLT error handler is `new DefaultErrorHandler(new FixedBackOff(0L, 0L))`
+  built **without** a recoverer, so `ledger-events.DLT.DLT` cannot be created.
+- The `partition` and `offset` columns are **quoted** in the entity
+  (`@Column(name = "\"partition\"")`) because both are H2 2.x reserved words;
+  unquoting them breaks schema creation at startup.
+- Rows are occurrences, not entities: duplicates are expected and intentional.
+- The DLT group is deliberately separate from `billing-service` so DLT offsets
+  never mix into the archive consumer's commit history.
+
+Behaviour is still unproven end to end: the unit/context suite is green, but no
+live poison message has been driven through the listener yet (the spec's
+acceptance criteria for the broker path are open).
 
 ## 2. Architecture Overview
 
@@ -72,7 +81,9 @@ version change, without an ADR. Schema is owned by Flyway in `ledger-service`;
 |---|---|---|
 | **Spec-driven workflow scaffolding established** — `AGENTS.md`, `docs/CONTEXT/java-backend.md`, `docs/CONTEXT/angular-frontend.md`, `docs/MEMORY.md`, `specs/TEMPLATE-FEATURE.md`, `specs/TEMPLATE-BUG.md` | `aa67ec0` | Done, on this branch |
 | **CI workflow + IDE-backup ignores** | `e99bf7a` | Done, on this branch |
-| **DLT consumer spec drafted** — `specs/001-dlt-consumer.md`, a full design for consuming `ledger-events.DLT` so poison messages become inspectable rows | this commit | Spec only; accepted for implementation, code not started |
+| **DLT consumer spec drafted** — `specs/001-dlt-consumer.md`, a full design for consuming `ledger-events.DLT` so poison messages become inspectable rows | `a017ff7` | Done |
+| **DLT consumer implemented** — listener on `ledger-events.DLT`, group `billing-service-dlt`, rows written to `dead_letter_transactions` | `86d3036` | Done, on this branch |
+| **Docs realigned with the implementation** — `ARCHITECTURE.md` §5, `README.md` features / known gaps / future work | this commit | Done |
 | **Live event streaming + archived transactions + observability** | merge `ae59999` | Done, inherited from `feature/live-event-stream` |
 | **Time-travel ledger queries + projection rebuild consistency check** | merge `ae59999` | Done, inherited from `feature/time-travel-ledger` |
 

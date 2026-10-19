@@ -430,11 +430,16 @@ graph LR
     subgraph consumers["Consumers"]
         TE["billing-service<br/>TransactionEventConsumer<br/>@KafkaListener topics = ledger-events"]
         CG["consumer group<br/>billing-service<br/>spring.kafka.consumer.group-id"]
+        DTE["billing-service<br/>DltTransactionEventConsumer<br/>@KafkaListener topics = ledger-events.DLT"]
+        DCG["consumer group<br/>billing-service-dlt<br/>spring.kafka.consumer.dlt-group-id"]
     end
 
-    subgraph sink["Sink"]
+    subgraph sinks["Sinks"]
         ARCH[("archived_transactions<br/>H2 bills-db")]
+        DLTT[("dead_letter_transactions<br/>H2 bills-db")]
     end
+
+    GUARD["structural guard: the DLT error handler has no recoverer<br/>FixedBackOff(0L, 0L) = one attempt, then skip<br/>so ledger-events.DLT.DLT cannot be created"]
 
     KP -->|"send topic, key=transactionId, .get 10 SECONDS"| LE
     LE -->|"read_committed, auto-offset-reset earliest"| CG
@@ -443,6 +448,11 @@ graph LR
     TE -->|"Acknowledgment.acknowledge MANUAL ack after archive"| CG
     TE -.->|"throw RuntimeException after FixedBackOff 1000ms x 3 attempts"| REC
     REC -.->|"new TopicPartition record.topic + .DLT"| DLT
+    DLT -->|"read_committed, auto-offset-reset earliest"| DCG
+    DCG --> DTE
+    DTE -->|"repository.save, one row per occurrence (no dedupe)"| DLTT
+    DTE -->|"Acknowledgment.acknowledge MANUAL ack after insert"| DCG
+    DTE -.->|"insert fails: one ERROR log, no ack, no republish"| GUARD
 
     classDef p fill:#1d4ed8,stroke:#0b2a6b,color:#ffffff
     classDef t fill:#15803d,stroke:#08401f,color:#ffffff
@@ -452,8 +462,8 @@ graph LR
     class KP,REC p
     class LE t
     class DLT d
-    class TE,CG c
-    class ARCH c
+    class TE,CG,DTE,DCG,ARCH,DLTT c
+    class GUARD d
 ```
 
 | Topic | Producer | Consumer group | Purpose |
@@ -461,9 +471,21 @@ graph LR
 |---|---|---|---|
 | `ledger-events` | `ledger-service` — `KafkaTransactionEventPublisher`, active only when `ledger.publisher=kafka` | `billing-service` (`spring.kafka.consumer.group-id=billing-service`) | Carry each committed `TransactionRecord` from the ledger to `billing-service`, which archives it into `archived_transactions`. Keyed by `transactionId` so all records for one transaction land on one partition and keep their order. |
 
-| `ledger-events.DLT` | `billing-service` — `DeadLetterPublishingRecoverer` | none (no `@KafkaListener` for it — **DLT consumer: NOT FOUND**) | Dead-letter parking for records that still fail after retries. Destination is computed per record as `record.topic() + ".DLT"` on the **same partition number**. |
+| `ledger-events.DLT` | `billing-service` — `DeadLetterPublishingRecoverer` | `billing-service-dlt` (`spring.kafka.consumer.dlt-group-id`) | Dead-letter parking for records that still fail after retries, consumed by `DltTransactionEventConsumer` and persisted to `dead_letter_transactions`. Destination is computed per record as `record.topic() + ".DLT"` on the **same partition number**. |
 
 - **Retry policy is `FixedBackOff(1000L, 3L)`** — three attempts, one second apart, wired as the container factory's `commonErrorHandler`; only after that does the recoverer publish to the DLT. The listener's own `catch` rethrows a `RuntimeException` specifically so the handler sees a failure instead of the record being acked.
+
+- **The DLT has a consumer, in a group of its own.** `DltTransactionEventConsumer` listens on `ledger-events.DLT` through a dedicated `dltListenerContainerFactory` and writes each poison message to `dead_letter_transactions`. Its group is **`billing-service-dlt`** (`spring.kafka.consumer.dlt-group-id`, with the literal as the bean's default), deliberately not the main `billing-service` group: the two offset histories stay separate, so a stall on the DLT cannot slow archive consumption, the archive group's commit history is not polluted by DLT offsets, and DLT lag is observable per group in Kafdrop or `kafka-consumer-groups`. `DltKafkaConsumerConfig` is a separate class precisely so the main factory, error handler and recoverer above are untouched.
+
+- **No DLT ladder, structurally rather than by policy.** The DLT factory's handler is `new DefaultErrorHandler(new FixedBackOff(0L, 0L))` — constructed **without** a `DeadLetterPublishingRecoverer`. A recoverer is the only component that appends `.DLT` to a topic name, so its absence makes `ledger-events.DLT.DLT` unreachable no matter how the retry policy is tuned later; the zero backoff means one attempt, immediately. A record that fails to persist is logged once at ERROR and skipped — not acknowledged, because a failed insert must not look consumed — and the original stays on `ledger-events.DLT` as the durable source, so nothing is unrecoverable. Both guards are kept because either one alone is easy to regress.
+
+- **What a poison row records.** `DeadLetterTransaction` stores the original `topic`/`partition`/`offset` from the `kafka_dlt-*` headers (matched by **suffix**, since the prefix differs across `DeadLetterPublishingRecoverer` versions), the record key, the payload **verbatim** as an `@Lob`, the exception FQCN and message, and an ISO-8601 `failedAt` string rather than a timestamp, matching how ledger timestamps are already stored. Records with missing or unparseable headers are still persisted with null coordinates: an incomplete row beats a lost one. The repository is `@RepositoryRestResource(exported = false)` — failure evidence must not be readable through the generic `/api` surface.
+
+- **Rows are occurrences, not entities.** There is no dedupe on the DLT path: republishing the same payload yields two rows, deliberately, because each arrival is a distinct failure. `billing-service`'s H2 `bills-db` is in-memory, so like `archived_transactions` these rows die with the JVM and are re-consumed from `earliest` on restart.
+
+- **`partition` and `offset` must stay quoted in the entity.** Both are reserved words in H2 2.x, so `DeadLetterTransaction` maps them as `@Column(name = "\"partition\"")` and `@Column(name = "\"offset\"")`. Unquoting them turns schema creation into a syntax error at startup — the quotes are load-bearing, not style.
+
+- **Operator note — partition alignment.** `DeadLetterPublishingRecoverer` publishes to `record.partition()` on the DLT topic, so `ledger-events.DLT` must have at least as many partitions as `ledger-events`. Both are auto-created against `KAFKA_NUM_PARTITIONS: 3` today, which matches; any future explicit partition count on `ledger-events` has to be mirrored on the DLT topic, or a send from a high partition fails.
 
 - **Delivery is manual-ack and read-committed.** `ENABLE_AUTO_COMMIT_CONFIG=false` with `AckMode.MANUAL`, and `ISOLATION_LEVEL_CONFIG=read_committed` so the consumer only sees committed (transactional) records; `acknowledge()` is called *after* the archive write, and duplicates short-circuit to an immediate ack.
 
@@ -683,7 +705,7 @@ erDiagram
 
 | **Kafka as an opt-in transport** (`ledger.publisher=http` default, `kafka` for exactly-once) | Kafka-only from day one | The archive hop is genuinely at-least-once work with a DLT requirement, which is what Kafka is for — but making it mandatory would couple ledger startup and the saga's ARCHIVE step to broker availability. `@ConditionalOnProperty` keeps exactly one publisher bean alive, HTTP preserves a working local path, and the Kafka producer is configured idempotent (`acks=all`, `enable.idempotence`) with `DELIVERY_TIMEOUT_MS=10000` specifically so a broker outage fails the ARCHIVE step fast enough for the saga to compensate instead of blocking it. |
 
-| **Kafka rather than RabbitMQ for the event hop** | RabbitMQ exchanges/queues | The read side needs *ordered, replayable, partitioned* delivery keyed by `transactionId`, partitioned storage, consumer-group offset replay (`auto-offset-reset=earliest`) and a first-class dead-letter story (`DeadLetterPublishingRecoverer` → `ledger-events.DLT`, `FixedBackOff(1000, 3)`). A log keyed by transaction is the natural fit for an event-sourced producer; a queue would discard the ordering and the replay position. |
+| **Kafka rather than RabbitMQ for the event hop** | RabbitMQ exchanges/queues | The read side needs *ordered, replayable, partitioned* delivery keyed by `transactionId`, partitioned storage, consumer-group offset replay (`auto-offset-reset=earliest`) and a first-class dead-letter story (`DeadLetterPublishingRecoverer` → `ledger-events.DLT` after `FixedBackOff(1000, 3)`, then a second consumer group `billing-service-dlt` that turns each parked record into a row in `dead_letter_transactions`, with no recoverer on that side so the DLT cannot grow a DLT). A log keyed by transaction is the natural fit for an event-sourced producer; a queue would discard the ordering and the replay position. |
 
 | **Central gateway JWT validation + trusted identity headers** (`SecurityConfig.headerInjectionFilter` injecting `X-User-Id`/`X-User-Roles`) | Each service validating the JWT itself | One JWKS client, one issuer check and one place where identity is translated; downstream services stay free of `spring-boot-starter-security` (ledger's `HeaderAuthFilter` is a plain servlet filter) and read a request-scoped `CallerContext`. The security property that makes it safe is **strip-then-inject, failing closed** — the headers are removed from every request *before* being re-added from the validated token, so a forged value cannot survive even on the fallback branch. The acknowledged cost is in the README: dev ports must not be publicly reachable, or the headers can be forged by a direct caller. |
 
@@ -699,7 +721,8 @@ erDiagram
 
 ### Appendix — Verification Notes
 
-- **`ARCHITECTURE.md` sources:** `docker-compose.yml`, all 8 `src/main/resources/application.properties`, `gateway-service/.../application.yml`, `config-repo/*.properties`, `keycloak/realm-export.json`, `ecom-frontend/src/app/{app.routes.ts,app.config.ts,proxy.conf.json}`, `ecom-frontend/src/app/services/auth.service.ts`, `ecom-frontend/src/app/interceptors/auth.interceptor.ts`, `ecom-frontend/src/app/guards/role.guard.ts`, `ledger-service/src/main/resources/db/migration/V1–V3`, and the Java sources named in each section above.
+- **`ARCHITECTURE.md` sources:** `docker-compose.yml`, all 8 `src/main/resources/application.properties`, `gateway-service/.../application.yml`, `config-repo/*.properties`, `keycloak/realm-export.json`, `billing-service/src/main/java/att/ossama/billingservice/kafka/{KafkaConsumerConfig,DltKafkaConsumerConfig,DltTransactionEventConsumer}.java`, `billing-service/src/main/java/att/ossama/billingservice/entities/DeadLetterTransaction.java`, `billing-service/src/main/java/att/ossama/billingservice/repository/DeadLetterTransactionRepository.java`, `ecom-frontend/src/app/{app.routes.ts,app.config.ts,proxy.conf.json}`, `ecom-frontend/src/app/services/auth.service.ts`, `ecom-frontend/src/app/interceptors/auth.interceptor.ts`, `ecom-frontend/src/app/guards/role.guard.ts`, `ledger-service/src/main/resources/db/migration/V1–V3`, and the Java sources named in each section above.
 
-- **Explicitly NOT FOUND:** a Postgres (or any database) service in `docker-compose.yml`; explicit `spring.cloud.gateway.routes` / `RouteLocator` configuration in `gateway-service`; a `NewTopic` / `TopicBuilder` topic declaration for `ledger-events` or `ledger-events.DLT`; a `@KafkaListener` consuming the `.DLT` topic.
+- **Explicitly NOT FOUND:** a Postgres (or any database) service in `docker-compose.yml`; explicit `spring.cloud.gateway.routes` / `RouteLocator` configuration in `gateway-service`; a `NewTopic` / `TopicBuilder` topic declaration for `ledger-events` or `ledger-events.DLT`.
+- **Formerly NOT FOUND, now implemented:** a `@KafkaListener` consuming the `.DLT` topic — `DltTransactionEventConsumer` (see §5), with `DltKafkaConsumerConfig`, `DeadLetterTransaction` and `DeadLetterTransactionRepository`. It was the last item in this appendix's gap list.
 - **Discrepancy worth knowing:** `ecom-frontend/README-DEV-PROXY.md` describes the dev proxy routing *directly* to ports 8081–8085 with `pathRewrite`, but the committed `ecom-frontend/proxy.conf.json` sends all five prefixes to the gateway on `8888` with no rewrite. The config file is the operative behaviour.
