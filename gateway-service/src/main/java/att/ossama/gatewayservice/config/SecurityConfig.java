@@ -2,16 +2,21 @@ package att.ossama.gatewayservice.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.convert.converter.Converter;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpRequestDecorator;
+import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.SecurityWebFiltersOrder;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.security.oauth2.server.resource.authentication.ReactiveJwtAuthenticationConverterAdapter;
 import org.springframework.security.oauth2.server.resource.web.server.authentication.ServerBearerTokenAuthenticationConverter;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.authentication.ServerAuthenticationConverter;
@@ -43,19 +48,64 @@ public class SecurityConfig {
     /** Query parameter a WebSocket client has to use in place of a header. */
     static final String ACCESS_TOKEN_PARAM = "access_token";
 
+    /** Role a backoffice caller must hold, and a writer of e-commerce data. */
+    static final String MANAGER_ROLE = "MANAGER";
+
+    /**
+     * Paths whose <em>writes</em> are manager-only. Reads are unaffected, so
+     * every signed-in operator still sees the customer, product and order
+     * lists; only create/update/delete are restricted.
+     */
+    static final String[] ECOMMERCE_WRITE_PATHS = {"/customer-service/**", "/inventory-service/**"};
+
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
         return http
             .csrf(ServerHttpSecurity.CsrfSpec::disable)
             .authorizeExchange(exchanges -> exchanges
                 .pathMatchers("/actuator/**", "/eureka/**").permitAll()
+                // Backoffice: MANAGER only. The endpoints themselves are gated by
+                // backoffice.users.enabled, so with that flag off a manager gets a
+                // 404 (no handler) rather than a 403 — absent, not refused, the
+                // same contract as ledger-service's projection rebuild route.
+                .pathMatchers("/backoffice/**").hasRole(MANAGER_ROLE)
+                // E-commerce writes are a manager's job, not a teller's and not
+                // an auditor's. Before this rule the gateway only asked whether
+                // the caller was authenticated, so any signed-in user could
+                // create or delete customers and products. PATCH is included
+                // because Spring Data REST also exposes partial updates.
+                .pathMatchers(HttpMethod.POST, ECOMMERCE_WRITE_PATHS).hasRole(MANAGER_ROLE)
+                .pathMatchers(HttpMethod.PUT, ECOMMERCE_WRITE_PATHS).hasRole(MANAGER_ROLE)
+                .pathMatchers(HttpMethod.PATCH, ECOMMERCE_WRITE_PATHS).hasRole(MANAGER_ROLE)
+                .pathMatchers(HttpMethod.DELETE, ECOMMERCE_WRITE_PATHS).hasRole(MANAGER_ROLE)
                 .anyExchange().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2
                 .bearerTokenConverter(bearerTokenConverter())
-                .jwt(jwt -> {}))
+                .jwt(jwt -> jwt.jwtAuthenticationConverter(reactiveJwtAuthenticationConverter())))
             .addFilterAfter(headerInjectionFilter(), SecurityWebFiltersOrder.AUTHENTICATION)
             .build();
+    }
+
+    /**
+     * Supplies the authorities the rules above match on.
+     *
+     * <p>Spring Security's defaults give a Keycloak token no authorities — the
+     * built-in converter reads {@code scope}, and these roles live under
+     * {@code realm_access.roles} — so without this the chain authenticates
+     * successfully and then denies every {@code hasRole} rule. The
+     * {@link KeycloakRealmRoleConverter} does the extracting.
+     *
+     * <p>{@link JwtAuthenticationConverter} is a blocking
+     * {@code Converter<Jwt, AbstractAuthenticationToken>}, which the reactive
+     * chain cannot take directly;
+     * {@link ReactiveJwtAuthenticationConverterAdapter} is the supported
+     * bridge and does no I/O.
+     */
+    private Converter<Jwt, Mono<AbstractAuthenticationToken>> reactiveJwtAuthenticationConverter() {
+        JwtAuthenticationConverter delegate = new JwtAuthenticationConverter();
+        delegate.setJwtGrantedAuthoritiesConverter(new KeycloakRealmRoleConverter());
+        return new ReactiveJwtAuthenticationConverterAdapter(delegate);
     }
 
     /**
