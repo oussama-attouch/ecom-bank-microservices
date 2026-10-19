@@ -83,6 +83,15 @@ export class AppComponent implements OnInit {
         { label: 'Live Events', icon: 'pi pi-bolt', route: '/observability/live' },
         { label: 'Archived Transactions', icon: 'pi pi-inbox', route: '/observability/archived' }
       ]
+    },
+    {
+      // Hidden for anyone without MANAGER: the template renders a nav item only
+      // when hasRequiredRole(m.roles) passes, and the route guard repeats the
+      // check so a typed URL cannot reach the page either.
+      header: 'Administration',
+      items: [
+        { label: 'Backoffice', icon: 'pi pi-shield', route: '/backoffice/users', roles: ['MANAGER'] }
+      ]
     }
   ];
 

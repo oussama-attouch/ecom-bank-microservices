@@ -15,6 +15,7 @@ import { StatementComponent } from './components/statement/statement.component';
 import { JournalComponent } from './components/journal/journal.component';
 import { LiveEventStreamComponent } from './components/observability/live-event-stream/live-event-stream.component';
 import { ArchivedTransactionsComponent } from './components/observability/archived-transactions/archived-transactions.component';
+import { UserAdminComponent } from './components/backoffice/user-admin/user-admin.component';
 import { LoginComponent } from './components/login/login.component';
 import { authGuard } from './guards/auth.guard';
 import { roleGuard } from './guards/role.guard';
@@ -60,6 +61,9 @@ export const routes: Routes = [
       // reason: it is the same ledger history the Sagas and Journal pages
       // already expose, only read back from the consumer's own copy.
       { path: 'observability/archived', component: ArchivedTransactionsComponent },
+      // Manager-only access administration. The guard is UX — the gateway
+      // enforces the same rule and answers 403 to anyone without the role.
+      { path: 'backoffice/users', component: UserAdminComponent, canActivate: [roleGuard(['MANAGER'])] },
     ]
   },
   { path: '**', redirectTo: 'dashboard' }

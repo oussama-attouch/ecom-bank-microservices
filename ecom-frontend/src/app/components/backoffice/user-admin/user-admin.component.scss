@@ -1,0 +1,137 @@
+:host {
+  display: block;
+}
+
+.title-block {
+  max-width: 78ch;
+}
+
+.page-sub {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+}
+
+.head-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+
+.count {
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A page state, not an incident: the gate is off, or this session is not a
+   manager. Deliberately not a red toast — nothing is broken. */
+.gate-error {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  background: var(--warning-soft);
+}
+
+.gate-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: var(--surface-0);
+  color: var(--warning-text);
+}
+
+.gate-body {
+  min-width: 0;
+}
+
+.gate-title {
+  margin: 0;
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.gate-hint {
+  margin: var(--space-1) 0 0;
+  max-width: 74ch;
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+}
+
+.gate-hint code {
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+  font-size: 0.85em;
+}
+
+.role-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.muted {
+  color: var(--text-secondary);
+}
+
+.col-enabled {
+  width: 110px;
+}
+
+.col-actions {
+  width: 132px;
+  text-align: right;
+}
+
+/* Dialog */
+.dialog-sub {
+  margin: 0 0 var(--space-3);
+  color: var(--text-secondary);
+}
+
+.role-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.role-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+
+.role-name {
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-base);
+}
+
+.role-hint {
+  margin-left: auto;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+/* The 15-minute window is a property of the token, not of this screen; stating
+   it where the save button is keeps it from being forgotten immediately after. */
+.staleness {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}

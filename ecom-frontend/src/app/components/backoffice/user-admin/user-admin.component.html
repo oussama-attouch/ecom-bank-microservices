@@ -1,0 +1,156 @@
+<div class="page-head">
+  <div class="title-block">
+    <h2>Backoffice</h2>
+    <p class="page-sub">
+      Access administration. Roles here decide what an operator can do everywhere else in the
+      platform, so the screen is MANAGER-only and every change is written straight to Keycloak.
+    </p>
+  </div>
+  <div class="head-tools">
+    <span class="count" *ngIf="!loading && !gateError">{{ total }} user{{ total === 1 ? '' : 's' }}</span>
+    <p-button
+      label="Refresh"
+      icon="pi pi-refresh"
+      severity="secondary"
+      [outlined]="true"
+      [loading]="loading"
+      (onClick)="load()"></p-button>
+  </div>
+</div>
+
+<div class="form-row">
+  <input
+    pInputText
+    type="text"
+    [formControl]="search"
+    placeholder="Search by username, name or email"
+    aria-label="Search users" />
+</div>
+
+@if (gateError) {
+  <!-- A page state, not an incident: the gate flag is off (404) or this session
+       does not hold MANAGER (403). Never a bare "an error occurred". -->
+  <div class="gate-error" role="alert">
+    <span class="gate-icon"><i class="pi pi-lock"></i></span>
+    <div class="gate-body">
+      <p class="gate-title">{{ gateError }}</p>
+      @if (gateError === 'Backoffice gate is disabled on the gateway.') {
+        <p class="gate-hint">
+          Set <code>backoffice.users.enabled=true</code> in the gateway and restart it. The
+          endpoints are absent, not merely refused, while the flag is off.
+        </p>
+      } @else if (gateError === 'You do not hold MANAGER role.') {
+        <p class="gate-hint">
+          An existing session keeps its roles for up to 15 minutes after a change. Signing out and
+          back in picks up the current ones.
+        </p>
+      }
+    </div>
+  </div>
+} @else if (loading) {
+  <app-table-skeleton [rows]="5" [cols]="6"></app-table-skeleton>
+} @else {
+  <p-table [value]="users" [paginator]="users.length > 10" [rows]="10" responsiveLayout="scroll">
+    <ng-template pTemplate="header">
+      <tr>
+        <th pSortableColumn="username">Username <p-sortIcon field="username"></p-sortIcon></th>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Roles</th>
+        <th class="col-enabled">Enabled</th>
+        <th class="col-actions">Actions</th>
+      </tr>
+    </ng-template>
+
+    <ng-template pTemplate="body" let-u>
+      <tr>
+        <td class="mono-id">{{ u.username }}</td>
+        <td>{{ fullName(u) }}</td>
+        <td>{{ u.email || '—' }}</td>
+        <td>
+          @if (u.roles.length) {
+            <span class="role-chips">
+              @for (role of u.roles; track role) {
+                <p-tag [value]="role" [severity]="roleSeverity(role)"></p-tag>
+              }
+            </span>
+          } @else {
+            <span class="muted">none</span>
+          }
+        </td>
+        <td class="col-enabled">
+          <!-- One-way binding: the row is the source of truth, and a failed call
+               re-renders it rather than leaving the switch lying. -->
+          <p-toggleswitch
+            [ngModel]="u.enabled"
+            (ngModelChange)="toggleEnabled(u, $event)"
+            [disabled]="togglingId === u.id"
+            [ariaLabel]="'Sign-in enabled for ' + u.username"></p-toggleswitch>
+        </td>
+        <td class="col-actions">
+          <p-button
+            label="Edit roles"
+            icon="pi pi-key"
+            [text]="true"
+            [rounded]="true"
+            (onClick)="openRoles(u)"></p-button>
+        </td>
+      </tr>
+    </ng-template>
+
+    <ng-template pTemplate="emptymessage">
+      <tr>
+        <td [attr.colspan]="6">
+          <app-empty-state
+            icon="pi pi-users"
+            title="No users match."
+            [hint]="search.value
+              ? 'Nothing matches “' + search.value + '”. Clear the search to see every user.'
+              : 'The realm returned no users.'"></app-empty-state>
+        </td>
+      </tr>
+    </ng-template>
+  </p-table>
+}
+
+<p-dialog
+  [(visible)]="dialogVisible"
+  [modal]="true"
+  [draggable]="false"
+  [resizable]="false"
+  [style]="{ width: '460px' }"
+  header="Edit roles">
+  @if (editing) {
+    <p class="dialog-sub">
+      Roles for <strong class="mono-id">{{ editing.username }}</strong>
+    </p>
+
+    <div class="role-list">
+      @for (role of roles; track role) {
+        <label class="role-row">
+          <p-checkbox
+            [ngModel]="hasDraft(role)"
+            (ngModelChange)="setDraft(role, $event)"
+            [binary]="true"
+            [inputId]="'role-' + role"></p-checkbox>
+          <span class="role-name">{{ role }}</span>
+          <span class="role-hint">{{ role === 'MANAGER' ? 'Backoffice + approvals' : role === 'TELLER' ? 'Transfers up to $10,000' : 'Read-only oversight' }}</span>
+        </label>
+      }
+    </div>
+
+    <p class="staleness">
+      Role and status changes apply at the user's next sign-in; an existing session stays valid for
+      up to 15 minutes.
+    </p>
+  }
+
+  <ng-template pTemplate="footer">
+    <p-button label="Cancel" severity="secondary" [text]="true" (onClick)="closeRoles()"></p-button>
+    <p-button
+      label="Save"
+      icon="pi pi-check"
+      [loading]="saving"
+      (onClick)="saveRoles()"></p-button>
+  </ng-template>
+</p-dialog>

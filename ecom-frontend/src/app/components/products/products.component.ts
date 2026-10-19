@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TableModule } from 'primeng/table';
@@ -7,7 +7,9 @@ import { InputTextModule } from 'primeng/inputtext';
 import { InputNumberModule } from 'primeng/inputnumber';
 import { TooltipModule } from 'primeng/tooltip';
 import { ConfirmationService, MessageService } from 'primeng/api';
+import { map } from 'rxjs';
 import { ProductService } from '../../services/product.service';
+import { AuthService } from '../../services/auth.service';
 import { Product } from '../../models';
 
 import { EmptyStateComponent } from '../shared/empty-state/empty-state.component';
@@ -20,13 +22,17 @@ import { TableSkeletonComponent } from '../shared/table-skeleton/table-skeleton.
   template: `
     <div class="page-head"><h2>Products</h2></div>
 
-    <div class="form-row">
-      <input pInputText name="name" [(ngModel)]="form.name" placeholder="Name">
-      <p-inputNumber name="price" [(ngModel)]="form.price" placeholder="Price" mode="currency" currency="USD"></p-inputNumber>
-      <p-inputNumber name="quantity" [(ngModel)]="form.quantity" placeholder="Quantity"></p-inputNumber>
-      <p-button [label]="editingId != null ? 'Update' : 'Add Product'" icon="pi pi-check" (onClick)="save()"></p-button>
-      <p-button *ngIf="editingId != null" label="Cancel" severity="secondary" icon="pi pi-times" (onClick)="reset()"></p-button>
-    </div>
+    <!-- Manager-only writes: the gateway rejects POST/PUT/DELETE from anyone
+         else, so offering the form to a teller would only produce a 403. -->
+    @if (canWrite$ | async) {
+      <div class="form-row">
+        <input pInputText name="name" [(ngModel)]="form.name" placeholder="Name">
+        <p-inputNumber name="price" [(ngModel)]="form.price" placeholder="Price" mode="currency" currency="USD"></p-inputNumber>
+        <p-inputNumber name="quantity" [(ngModel)]="form.quantity" placeholder="Quantity"></p-inputNumber>
+        <p-button [label]="editingId != null ? 'Update' : 'Add Product'" icon="pi pi-check" (onClick)="save()"></p-button>
+        <p-button *ngIf="editingId != null" label="Cancel" severity="secondary" icon="pi pi-times" (onClick)="reset()"></p-button>
+      </div>
+    }
 
     @if (loading) {
       <app-table-skeleton [rows]="5" [cols]="5"></app-table-skeleton>
@@ -43,12 +49,12 @@ import { TableSkeletonComponent } from '../shared/table-skeleton/table-skeleton.
           <th pSortableColumn="name">Name <p-sortIcon field="name"></p-sortIcon></th>
           <th pSortableColumn="price">Price <p-sortIcon field="price"></p-sortIcon></th>
           <th pSortableColumn="quantity">Quantity <p-sortIcon field="quantity"></p-sortIcon></th>
-          <th>Actions</th>
+          <th *ngIf="canWrite$ | async">Actions</th>
         </tr>
       </ng-template>
       <ng-template pTemplate="emptymessage">
         <tr>
-          <td [attr.colspan]="5">
+          <td [attr.colspan]="(canWrite$ | async) ? 5 : 4">
             <app-empty-state
               icon="pi pi-box"
               title="No products yet"
@@ -62,7 +68,7 @@ import { TableSkeletonComponent } from '../shared/table-skeleton/table-skeleton.
           <td>{{ p.name }}</td>
           <td>{{ p.price }}</td>
           <td>{{ p.quantity }}</td>
-          <td>
+          <td *ngIf="canWrite$ | async">
             <p-button icon="pi pi-pencil" [text]="true" [rounded]="true" pTooltip="Edit" (onClick)="edit(p)"></p-button>
             <p-button icon="pi pi-trash" severity="danger" [text]="true" [rounded]="true" pTooltip="Delete" (onClick)="confirmDelete(p.id!)"></p-button>
           </td>
@@ -74,6 +80,15 @@ import { TableSkeletonComponent } from '../shared/table-skeleton/table-skeleton.
   styles: [`.flex { display: flex; } .justify-end { justify-content: flex-end; }`]
 })
 export class ProductsComponent implements OnInit {
+  private readonly auth = inject(AuthService);
+
+  /**
+   * True only for a MANAGER. Driven by the roles observable rather than a
+   * one-off `hasRole()` read so the buttons appear when the roles arrive on a
+   * hard refresh, instead of depending on a later change-detection pass.
+   */
+  readonly canWrite$ = this.auth.userRoles$.pipe(map((roles) => roles.includes('MANAGER')));
+
   products: Product[] = [];
   form: Product = { name: '', price: 0, quantity: 0 };
   editingId: number | null = null;
