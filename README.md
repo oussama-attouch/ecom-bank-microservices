@@ -200,19 +200,19 @@ Every saga step, event-store append, Kafka publish, and Kafka consume streamed o
 
 Every transaction `billing-service` has consumed from the `ledger-events` topic and archived. The summary bar shows the archive's current size, transfer count, total volume, and newest timestamp. Filters (type, date range, amount, account) narrow the view; row IDs link to the source saga in the Saga Inspector. Together with the Live Events page, this completes the Kafka story: what was published, and what was durably received.
 
-### 4.10 Time-Travel — Point-in-Time Snapshot
+### 4.12 Time-Travel — Point-in-Time Snapshot
 
 ![Time Travel](docs/screenshots/dashboard/time-travel-scrubber.png)
 
 Drag the scrubber to any past instant and the whole Command Center describes it. Scrub to May 2025 and AUM falls from $19.3M to $13.6M, Active Accounts from 1,115 to 192 — six read endpoints, every one carrying `?at=`. The Dashboard SLA card reads "No data" rather than a fabricated 0%: it is sampled in the JVM's memory, so an instant before the process started has no reading at all.
 
-### 4.11 Dual-Implementation Consistency Check
+### 4.13 Dual-Implementation Consistency Check
 
 ![Projection Consistency](docs/screenshots/dashboard/projection-rebuild-success.png)
 
 `POST /api/admin/projections/rebuild` computes the same ledger state two independent ways — a Java event replay and a Postgres aggregate — and verifies they agree. On the seeded portfolio ledger: **51,042 events, 1,115 accounts, 0 mismatches.** Nothing is truncated; every read model here is computed on demand, so what the check proves is that the two *computations* agree.
 
-### 4.12 Backoffice — User Administration
+### 4.14 Backoffice — User Administration
 
 ![Backoffice User Administration](docs/screenshots/backoffice/user-admin.png)
 
