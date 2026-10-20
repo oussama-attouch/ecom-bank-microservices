@@ -76,8 +76,12 @@ public class DltTransactionEventConsumer {
 
         try {
             DeadLetterTransaction saved = repository.save(row);
+            // DLT_CONSUMER is the marker the live smoke test greps for; the
+            // coordinates are the evidence that this row is the record that
+            // failed, rather than a row from an earlier run.
             // ERROR, not WARN: a row here means the pipeline dropped a record.
-            log.error("Poison message from {}:{}@{} persisted as dead_letter_transactions id={} ({})",
+            log.error("DLT_CONSUMER: Persisted poison message to database. "
+                            + "Original topic: {}, partition: {}, offset: {}, id: {}, Exception: {}",
                     saved.getTopic(), originalPartition, originalOffset, saved.getId(), exceptionFqcn);
         } catch (RuntimeException e) {
             // One attempt, no recoverer (see DltKafkaConsumerConfig): throwing
