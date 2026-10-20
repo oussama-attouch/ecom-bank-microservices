@@ -6,22 +6,22 @@
 
 ## 1. Current Branch & Status
 
-- **Branch:** `feature/workflow-scaffolding`
-- **Tip:** this commit — `chore: close backoffice milestone`.
-- **Remote:** in sync with `origin/feature/workflow-scaffolding`
-- **Working tree:** clean, and the branch is **ready to merge into `main`**
-  (11 commits ahead; `main` has not moved since `ae59999`, so it fast-forwards).
+- **Branch:** `main`
+- **Tip:** this commit — `docs(context): finalize project state after live DLT verification`.
+- **Remote:** in sync with `origin/main` (nothing unpushed)
+- **Working tree:** clean
 
-**What is on this branch:** the workflow scaffolding (`AGENTS.md`,
+**What is on `main`:** the workflow scaffolding (`AGENTS.md`,
 `docs/CONTEXT/`, `specs/` templates, `docs/MEMORY.md`) plus two features
 delivered through it — the `ledger-events.DLT` consumer in `billing-service`,
 and **Backoffice access administration** (gateway facade, Keycloak realm
-client, and an Angular page for `MANAGER`).
+client, and an Angular page for `MANAGER`). Both are merged; the delivering
+branches were `feature/workflow-scaffolding` and `feature/dlt-verification`.
 
-**DLT consumer status: IMPLEMENTED** (`86d3036 feat(kafka): implement
-ledger-events.DLT consumer`). Poison messages that exhaust the main listener's
-three retries are now persisted as inspectable rows instead of being parked
-invisibly on a topic:
+**DLT consumer status: IMPLEMENTED AND VERIFIED END-TO-END** (`86d3036`
+implementation, `55afb4f` verification marker). Poison messages that exhaust the
+main listener's three retries are persisted as inspectable rows instead of being
+parked invisibly on a topic:
 
 | Piece | Location |
 |---|---|
@@ -42,9 +42,13 @@ Guarantees that must not be regressed when touching this code:
 - The DLT group is deliberately separate from `billing-service` so DLT offsets
   never mix into the archive consumer's commit history.
 
-Behaviour is still unproven end to end: the unit/context suite is green, but no
-live poison message has been driven through the listener yet (the spec's
-acceptance criteria for the broker path are open).
+Verified against the local stack, not argued from the code: a malformed record
+was published to `ledger-events`; the main listener failed and retried three
+times, one second apart; `DeadLetterPublishingRecoverer` republished it to
+`ledger-events.DLT`; the DLT consumer persisted it and logged
+`DLT_CONSUMER: Persisted poison message to database. …` carrying the original
+topic, partition and offset. The broker path is now a demonstrated fact rather
+than a design claim.
 
 ## 2. Architecture Overview
 
@@ -82,24 +86,33 @@ version change, without an ADR. Schema is owned by Flyway in `ledger-service`;
 
 | Milestone | Commit | State |
 |---|---|---|
-| **Spec-driven workflow scaffolding established** — `AGENTS.md`, `docs/CONTEXT/java-backend.md`, `docs/CONTEXT/angular-frontend.md`, `docs/MEMORY.md`, `specs/TEMPLATE-FEATURE.md`, `specs/TEMPLATE-BUG.md` | `aa67ec0` | Done, on this branch |
-| **CI workflow + IDE-backup ignores** | `e99bf7a` | Done, on this branch |
+| **Spec-driven workflow scaffolding established** — `AGENTS.md`, `docs/CONTEXT/java-backend.md`, `docs/CONTEXT/angular-frontend.md`, `docs/MEMORY.md`, `specs/TEMPLATE-FEATURE.md`, `specs/TEMPLATE-BUG.md` | `aa67ec0` | Done |
+| **CI workflow + IDE-backup ignores** | `e99bf7a` | Done |
 | **DLT consumer spec drafted** — `specs/001-dlt-consumer.md`, a full design for consuming `ledger-events.DLT` so poison messages become inspectable rows | `a017ff7` | Done |
-| **DLT consumer implemented** — listener on `ledger-events.DLT`, group `billing-service-dlt`, rows written to `dead_letter_transactions` | `86d3036` | Done, on this branch |
+| **DLT consumer implemented** — listener on `ledger-events.DLT`, group `billing-service-dlt`, rows written to `dead_letter_transactions` | `86d3036` | Done |
 | **Docs realigned with the implementation** — `ARCHITECTURE.md` §5, `README.md` features / known gaps / future work | `87d9344` | Done |
 | **Backoffice spec written and approved** — `specs/002-backoffice.md` | `9775265` | Done |
 | **Gateway role enforcement** — realm roles → `ROLE_*` authorities; `/backoffice/**` and e-commerce writes MANAGER-only, reads unchanged | `e747f35` | Done |
 | **Keycloak admin client** — client-credentials token, cached with single-flight refresh | `c4c4826` | Done |
 | **Backoffice API and realm client** — `ecom-backoffice` service account; list / edit roles / enable-disable with lockout guards | `749daf7` | Done |
 | **Backoffice UI** — `/backoffice/users`, nav link, proxy entry; Customers and Products hide writes from non-managers | `e596c50` | Done |
-| **Milestone closed** — Karma specs for the three failure states, docs and this snapshot updated, merged to `main` | this commit | Done |
+| **Milestone closed** — Karma specs for the three failure states, docs and this snapshot updated, merged to `main` | `0cdb273` | Done |
+| **DLT consumer verified end-to-end** — a live poison message was retried, republished to `ledger-events.DLT`, consumed and persisted, and the `DLT_CONSUMER:` marker observed in the billing-service console | `55afb4f` | Done |
+| **Project finalized** — every spec implemented, verified and merged; zero open items | this commit | Done |
 | **Live event streaming + archived transactions + observability** | merge `ae59999` | Done, inherited from `feature/live-event-stream` |
 | **Time-travel ledger queries + projection rebuild consistency check** | merge `ae59999` | Done, inherited from `feature/time-travel-ledger` |
 
 ## 5. Active Context
 
-**The Backoffice is complete** and this branch is ready to merge. `MANAGER` now
-has a page of its own at `/backoffice/users`, reachable from the
+**Project Status: Complete.** Both specs are implemented, verified and merged to
+`main`; there are no open items.
+
+| Spec | State | Evidence |
+|---|---|---|
+| `specs/001-dlt-consumer.md` | Implemented and verified end-to-end | A live poison message was retried three times, republished to `ledger-events.DLT`, consumed and persisted; the `DLT_CONSUMER:` marker appeared in the billing-service console |
+| `specs/002-backoffice.md` | Implemented and verified | The API was exercised against the live Keycloak — list, role edit, enable/disable, 403 for non-managers, 409 lockout guards — and the page was checked in the browser by the owner |
+
+`MANAGER` has a page of its own at `/backoffice/users`, reachable from the
 "Administration → Backoffice" nav item (rendered only for managers) and behind
 `roleGuard(['MANAGER'])`.
 
@@ -124,17 +137,16 @@ What changed beyond the page itself:
 
 Frontend routes now include `backoffice/users`; every other route is unchanged.
 
-**Open work, in priority order:**
+**Documented limitations — properties of the design, not open work:**
 
-1. The DLT consumer's broker path is still unproven end to end — the unit and
-   context suites are green, but no live poison message has been driven through
-   `ledger-events.DLT` into `dead_letter_transactions`.
-2. Candidate next features, each needing a spec first: a dead-letter operations
-   view over `dead_letter_transactions`; a service health / feature-flag
-   inventory page; four-eyes approval for high-value transfers.
-3. Known limitation, documented rather than fixed: role and enablement changes
-   reach a user at their next sign-in — up to 15 minutes (`accessTokenLifespan
-   900`) — because no service re-checks Keycloak per request.
+- Role and enablement changes reach a user at their next sign-in, up to 15
+  minutes (`accessTokenLifespan 900`), because no service re-checks Keycloak per
+  request. Session revocation was never in scope.
+- DLT rows live in billing-service's H2 in-memory database and die with the JVM,
+  like `archived_transactions`; on restart the `billing-service-dlt` group
+  re-reads the topic from `earliest`.
+- The backoffice's last-manager guard is racy — Keycloak offers no transaction
+  across the read and the write — as recorded in the spec.
 
-Per §3, the next milestone begins by writing a spec in `specs/`; no code until
-it exists and is accepted.
+Any further feature still starts the same way: a spec in `specs/` first, then
+the three-step loop in §3.
