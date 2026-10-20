@@ -212,6 +212,12 @@ Drag the scrubber to any past instant and the whole Command Center describes it.
 
 `POST /api/admin/projections/rebuild` computes the same ledger state two independent ways — a Java event replay and a Postgres aggregate — and verifies they agree. On the seeded portfolio ledger: **51,042 events, 1,115 accounts, 0 mismatches.** Nothing is truncated; every read model here is computed on demand, so what the check proves is that the two *computations* agree.
 
+### 4.12 Backoffice — User Administration
+
+![Backoffice User Administration](docs/screenshots/backoffice/user-admin.png)
+
+A `MANAGER`-only page for Keycloak user administration. Managers can search for users, assign or revoke `TELLER`/`MANAGER`/`AUDITOR` roles, and enable or disable accounts without leaving the platform. The gateway enforces these roles at the edge using a Keycloak Admin API facade.
+
 ---
 
 ## 5. Architecture
