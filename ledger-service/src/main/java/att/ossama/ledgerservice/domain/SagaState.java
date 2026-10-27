@@ -56,6 +56,31 @@ public class SagaState {
         this.steps.add(step);
     }
 
+    /**
+     * A copy of this saga with one more step, leaving the receiver untouched.
+     *
+     * <p>Exists for the {@code ARCHIVE} step's transaction. The outbox writer
+     * persists a saga carrying that step inside a transaction that can roll back,
+     * and a rollback must not leave the in-memory saga claiming a step that never
+     * committed: the failure branch would then append {@code ARCHIVE ... FAILED} to
+     * a saga already holding {@code ARCHIVE ... EXECUTED}, and the compensations
+     * would persist a saga with two contradictory archive steps.
+     *
+     * <p>{@link SagaStep} is immutable, so the step list is copied rather than
+     * deep-copied: cheap, and nothing can reach through the copy to mutate the
+     * original's steps.
+     */
+    public SagaState copyWithStep(String name, Instant timestamp, Long offset, String status) {
+        SagaState copy = new SagaState(
+                transactionId, sourceAccountId, destinationAccountId, amount, startedAt);
+        for (SagaStep step : steps) {
+            copy.addStep(step);
+        }
+        copy.addStep(name, timestamp, offset, status);
+        copy.restoreTerminalState(this.status, this.errorMessage, this.completedAt);
+        return copy;
+    }
+
     public void finish(SagaStatus status, String errorMessage) {
         finish(status, errorMessage, Instant.now());
     }

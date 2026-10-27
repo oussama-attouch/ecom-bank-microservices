@@ -12,7 +12,6 @@ import att.ossama.ledgerservice.journal.JournalService;
 import att.ossama.ledgerservice.observability.LiveEvent;
 import att.ossama.ledgerservice.observability.LiveEventBroadcaster;
 import att.ossama.ledgerservice.projection.AccountProjection;
-import att.ossama.ledgerservice.publisher.TransactionEventPublisher;
 import att.ossama.ledgerservice.security.TransferLimitPolicy;
 import att.ossama.ledgerservice.web.dto.TransferRequest;
 import org.slf4j.Logger;
@@ -39,6 +38,16 @@ import java.util.UUID;
  * out by {@link SagaTimeline} with the realistic spacing between steps. Nothing
  * downstream of the start ever reads the clock, so a backfilled saga cannot
  * develop a torn timeline.
+ *
+ * <h2>Transaction boundaries</h2>
+ * There is deliberately no {@code @Transactional} on this class or on any of its
+ * methods. The saga commits one transaction per step and writes its failure record
+ * <em>after</em> catching — the {@code FAILED} step, the compensation legs, the
+ * {@code COMPENSATING} status — so a transaction spanning the whole saga would roll
+ * those writes back and lose the audit trail of the failure it just handled. The
+ * one step that needs two writes to commit together ({@code ARCHIVE} plus the
+ * outbox row) is delegated to {@link ArchiveStep}, whose outbox implementation is a
+ * separate bean so the proxy applies.
  */
 @Service
 public class TransferSagaService {
@@ -48,7 +57,7 @@ public class TransferSagaService {
     private final EventStore eventStore;
     private final AccountProjection projection;
     private final SagaRepository sagaRepository;
-    private final TransactionEventPublisher publisher;
+    private final ArchiveStep archiveStep;
     private final JournalService journalService;
     private final TransferLimitPolicy transferLimitPolicy;
     private final LiveEventBroadcaster broadcaster;
@@ -57,7 +66,7 @@ public class TransferSagaService {
     public TransferSagaService(EventStore eventStore,
                                AccountProjection projection,
                                SagaRepository sagaRepository,
-                               TransactionEventPublisher publisher,
+                               ArchiveStep archiveStep,
                                JournalService journalService,
                                TransferLimitPolicy transferLimitPolicy,
                                LiveEventBroadcaster broadcaster,
@@ -65,7 +74,7 @@ public class TransferSagaService {
         this.eventStore = eventStore;
         this.projection = projection;
         this.sagaRepository = sagaRepository;
-        this.publisher = publisher;
+        this.archiveStep = archiveStep;
         this.journalService = journalService;
         this.transferLimitPolicy = transferLimitPolicy;
         this.broadcaster = broadcaster;
@@ -180,11 +189,15 @@ public class TransferSagaService {
             if (simulateFailure) {
                 throw new RuntimeException("Simulated archive failure (demo mode)");
             }
-            if (publish) {
-                publisher.publishStrict(
-                        new TransactionRecord(txId, "TRANSFER", null, source, dest, amount, archiveAt.toString()));
-            }
-            recordStep(saga, "ARCHIVE", archiveAt, null, "EXECUTED");
+            TransactionRecord record = new TransactionRecord(
+                    txId, "TRANSFER", null, source, dest, amount, archiveAt.toString());
+            // The step is recorded by the seam, not here: on the outbox path it is
+            // added to a copy inside the archive transaction, so adding it again on
+            // this saga would leave a phantom step behind a rollback. On failure the
+            // assignment does not happen and `saga` is untouched, which is what lets
+            // the catch branch record ARCHIVE ... FAILED exactly once.
+            saga = archiveStep.archive(saga, record, archiveAt, publish);
+            streamStep(saga, "ARCHIVE", archiveAt, null, "EXECUTED");
         } catch (Exception e) {
             log.warn("SAGA {} step ARCHIVE failed: {}", txId, e.getMessage());
             recordStep(saga, "ARCHIVE", archiveAt, null, "FAILED");
@@ -261,10 +274,27 @@ public class TransferSagaService {
     /**
      * Records a saga step and mirrors it onto the live event stream.
      *
-     * <p>Every {@code addStep} in this class goes through here rather than calling
-     * {@link SagaState#addStep} directly, so the two cannot drift: a step that is
-     * added is a step that is streamed, including the compensation steps, which
-     * are exactly the ones an operator watching a stuck transfer needs to see.
+     * <p>Every {@code addStep} in this class goes through here — add, then stream —
+     * so the two cannot drift: a step that is added is a step that is streamed,
+     * including the compensation steps, which are exactly the ones an operator
+     * watching a stuck transfer needs to see.
+     *
+     * <p>The one step not added here is {@code ARCHIVE}: the {@link ArchiveStep} adds
+     * it, on a copy of the saga when the outbox is enabled, and this class then only
+     * streams it. That is what {@link #streamStep} is for.
+     */
+    private void recordStep(SagaState saga, String name, Instant occurredAt, Long offset, String status) {
+        saga.addStep(name, occurredAt, offset, status);
+        streamStep(saga, name, occurredAt, offset, status);
+    }
+
+    /**
+     * Mirrors an already-recorded step onto the live stream, without touching the
+     * saga.
+     *
+     * <p>Called for the {@code ARCHIVE} step after {@link ArchiveStep#archive}
+     * returns, i.e. after its transaction committed; streaming it from inside the
+     * transaction would show an archive that a rollback could still take away.
      *
      * <p>The stream is best-effort and must not be able to fail the saga, which is
      * why the broadcaster call sits outside every {@code try} block that could
@@ -272,8 +302,7 @@ public class TransferSagaService {
      * implementation only offers the event to a bounded queue — and the metadata is
      * built from values already in hand.
      */
-    private void recordStep(SagaState saga, String name, Instant occurredAt, Long offset, String status) {
-        saga.addStep(name, occurredAt, offset, status);
+    private void streamStep(SagaState saga, String name, Instant occurredAt, Long offset, String status) {
         String transactionId = saga.getTransactionId();
         broadcaster.publish(new LiveEvent(
                 occurredAt != null ? occurredAt : Instant.now(),

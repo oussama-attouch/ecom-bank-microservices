@@ -7,7 +7,6 @@ import att.ossama.ledgerservice.domain.SagaStatus;
 import att.ossama.ledgerservice.eventstore.EventStore;
 import att.ossama.ledgerservice.journal.JournalService;
 import att.ossama.ledgerservice.projection.AccountProjection;
-import att.ossama.ledgerservice.publisher.TransactionEventPublisher;
 import att.ossama.ledgerservice.security.CallerContext;
 import att.ossama.ledgerservice.security.TransferLimitPolicy;
 import att.ossama.ledgerservice.web.dto.TransferRequest;
@@ -18,14 +17,17 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -46,7 +48,7 @@ class TransferSagaServiceFundsCheckTest {
     @Mock private EventStore eventStore;
     @Mock private AccountProjection projection;
     @Mock private SagaRepository sagaRepository;
-    @Mock private TransactionEventPublisher publisher;
+    @Mock private ArchiveStep archiveStep;
     @Mock private JournalService journalService;
 
     private TransferSagaService service;
@@ -60,7 +62,7 @@ class TransferSagaServiceFundsCheckTest {
         // and the live stream is not what it asserts on. A lambda is what the
         // interface is for — one implementation publishes, the other does nothing,
         // and neither is the caller's business.
-        service = new TransferSagaService(eventStore, projection, sagaRepository, publisher,
+        service = new TransferSagaService(eventStore, projection, sagaRepository, archiveStep,
                 journalService, new TransferLimitPolicy(caller("MANAGER")), event -> { }, Clock.systemUTC());
     }
 
@@ -72,6 +74,20 @@ class TransferSagaServiceFundsCheckTest {
 
     private TransferRequest request(double amount) {
         return new TransferRequest(SOURCE, DEST, amount, "tx-funds-check");
+    }
+
+    /**
+     * Let the ARCHIVE step succeed so these tests can assert what happened before
+     * it. The step is added to a copy, exactly as the outbox writer does — the
+     * fake has to honour the seam's contract or the saga would stream a step it
+     * does not hold.
+     */
+    private void archiveSucceeds() {
+        when(archiveStep.archive(any(), any(), any(), anyBoolean())).thenAnswer(invocation -> {
+            SagaState saga = invocation.getArgument(0);
+            Instant archiveAt = invocation.getArgument(2);
+            return saga.copyWithStep("ARCHIVE", archiveAt, null, "EXECUTED");
+        });
     }
 
     @Test
@@ -86,8 +102,8 @@ class TransferSagaServiceFundsCheckTest {
     }
 
     /**
-     * A rejected transfer must leave no trace: no events appended, nothing
-     * published, and no saga saved. The idempotency lookup
+     * A rejected transfer must leave no trace: no events appended, no archive
+     * step attempted, and no saga saved. The idempotency lookup
      * ({@code sagaRepository.find}) is a read that happens before validation and
      * is expected; what must not happen is a write.
      */
@@ -101,7 +117,7 @@ class TransferSagaServiceFundsCheckTest {
                 .isInstanceOf(InsufficientFundsException.class);
 
         verifyNoInteractions(eventStore);
-        verifyNoInteractions(publisher);
+        verifyNoInteractions(archiveStep);
         verify(sagaRepository, never()).save(any());
     }
 
@@ -115,12 +131,13 @@ class TransferSagaServiceFundsCheckTest {
             appended.forEach(event -> event.setOffset(1L));
             return appended;
         });
+        archiveSucceeds();
 
         SagaState saga = service.execute(request(BALANCE), false);
 
         assertThat(saga.getStatus()).isEqualTo(SagaStatus.COMPLETED);
         verify(eventStore, times(2)).append(anyList(), any());
-        verify(publisher).publishStrict(any());
+        verify(archiveStep).archive(any(), any(), any(), eq(true));
     }
 
     @Test
@@ -133,6 +150,7 @@ class TransferSagaServiceFundsCheckTest {
             appended.forEach(event -> event.setOffset(1L));
             return appended;
         });
+        archiveSucceeds();
 
         SagaState saga = service.execute(request(100), false);
 
