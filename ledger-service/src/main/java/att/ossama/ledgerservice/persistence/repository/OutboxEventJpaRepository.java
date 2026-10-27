@@ -52,4 +52,24 @@ public interface OutboxEventJpaRepository extends JpaRepository<OutboxEventEntit
     List<OutboxEventEntity> claimPending(@Param("maxAttempts") int maxAttempts,
                                          @Param("now") Instant now,
                                          @Param("batchSize") int batchSize);
+
+    /**
+     * The admin list: newest first, ties broken by id.
+     *
+     * <p>Fifty because the dashboard renders a page, not a table anyone pages
+     * through, and the counters cover the whole table independently of it.
+     */
+    List<OutboxEventEntity> findTop50ByOrderByCreatedAtDescIdDesc();
+
+    /** Rows the relay has published. */
+    long countByPublishedAtIsNotNull();
+
+    /** Rows that exhausted their attempts and were parked in place. */
+    long countByPublishedAtIsNullAndParkedAtIsNotNull();
+
+    /** Rows that have been attempted and are waiting for their next attempt. */
+    long countByPublishedAtIsNullAndParkedAtIsNullAndAttemptCountGreaterThan(int attempts);
+
+    /** Rows never attempted. */
+    long countByPublishedAtIsNullAndParkedAtIsNullAndAttemptCount(int attempts);
 }
