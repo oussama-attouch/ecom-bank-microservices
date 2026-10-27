@@ -120,10 +120,11 @@ startup instead of silently picking a publication path.
 
 **`ledger.outbox.enabled=true` alone is not sufficient.** `KafkaTemplate` is a
 bean of `KafkaProducerConfig`, which is itself gated on `ledger.publisher=kafka`
-(`KafkaProducerConfig.java:17`, bean at `:42-45`). A `@ConditionalOnBean` on the
-poller would therefore remove it silently, so the gate-on configuration class
-**asserts at startup** that `ledger.publisher=kafka` and throws
-`IllegalStateException` otherwise. A relay with no producer would answer `200`
+(`KafkaProducerConfig.java:17`, bean at `:42-45`). **If the gate is on but
+`ledger.publisher=http`, the context fails to start because the `KafkaTemplate`
+bean is missing** — no custom exception class is used, and none is needed: a
+missing required collaborator is already loud and names the bean. That is the
+fail-fast this feature needs, because a relay with no producer would answer `200`
 while publishing nothing — and, with the outbox path selected, would suppress the
 inline `publishStrict` too — which is the exact silent failure this feature
 removes. Enable for a demo run with
@@ -466,9 +467,10 @@ no per-aggregate advisory locking or grouping is specified.
 
 Flow of one `poll()`:
 
-1. Single-flight: a `ReentrantLock.tryLock()`-style guard; a second caller waits
-   (bounded) rather than running a concurrent batch. The scheduled run and
-   `POST /poll` therefore never overlap.
+1. Single-flight: a `ReentrantLock.tryLock()` guard. A second caller **returns 0
+   immediately** rather than waiting or running a concurrent batch, so the
+   scheduled run and `POST /poll` never overlap and a poll never queues another.
+   `processed: 0` is therefore a legitimate answer to a forced poll.
 2. Claim in one transaction, in this exact shape:
    ```
    SELECT ... FROM outbox_events WHERE published_at IS NULL AND parked_at IS NULL AND attempt_count < :maxAttempts ORDER BY created_at ASC LIMIT :batchSize FOR UPDATE SKIP LOCKED
@@ -572,20 +574,30 @@ Response:
 | `events` | array | newest **50** rows, `created_at DESC`, tie-broken by `id DESC` |
 
 `OutboxEventDto`: `id, aggregateType, aggregateId, eventType, status, attempts,
-lastError, createdAt, publishedAt` — plus `payload` only when
-`?includePayload=true` is passed, in which case it is the stored text. Without
-the parameter the key is **absent**, not null. Default-excluding keeps PII out of
-every refresh; the dashboard never requests it.
+lastError, createdAt, publishedAt`. **`payload` is explicitly out of scope for this
+iteration**: the key is absent from every response — not null, and not opt-in. An
+earlier draft specified `?includePayload=true`; it is dropped rather than deferred,
+because the value is the full event body — the same bytes that go on the topic — and
+putting it in a dashboard response that draws none of it would leak transfer details
+into a page that never shows them and grow the payload for data nobody reads. The UI
+never requests it, and keeping the API lean is the point. An operator who needs the
+bytes reads them in the database, deliberately.
 
 Counts cover the whole table, `events` is the newest 50 — so
 `pending + published + failed + parked == total` and
-`events.length == min(total, 50)`. The UI must take its stat cards from the
-counters, never from `events`.
+`events.length == min(total, 50)`. The implementation uses **four distinct count
+queries plus `count()`** — one per status predicate — rather than the single grouped
+`count(*) FILTER (...)` this section first sketched. Each predicate is one branch of
+the status rule, so the counters and the rows cannot disagree about what a status
+means, and the invariant holds because the four predicates partition the rows. The
+UI must take its stat cards from the counters, never from `events`.
 
-No `@Transactional` is needed on the read: two statements (one grouped count,
-one page) are cheap enough that a snapshot is not worth a transaction, and
-`open-in-view=false` (`application.properties:111`) means the DTOs must be
-materialized inside the service method — no lazy entities escape.
+No `@Transactional` is needed on the read: five cheap aggregate statements and one
+page are not worth a snapshot, and `open-in-view=false`
+(`application.properties:111`) means the DTOs must be materialized inside the
+service method — no lazy entities escape. The counters and the page are separate
+statements, so a row can move between them during a refresh; both halves are
+individually true, and nothing here needs a consistent snapshot of a live queue.
 
 ### 7. `POST /api/admin/outbox/poll`
 
@@ -593,8 +605,11 @@ Calls `OutboxPublisher.poll()` synchronously in the request thread and returns
 `{ "triggeredAt": <ISO-8601>, "processed": <int> }`, where `processed` counts
 events **published**, not claimed. `POST` because it does work rather than fetch
 a representation — the same argument `ProjectionAdminController.java:56-60`
-records for its rebuild endpoint. Being serialised with the scheduled run (§5),
-a call during a batch waits for it and then runs its own.
+records for its rebuild endpoint. It shares the relay's single-flight guard with
+the scheduled tick (§5.1): a call that lands while a batch is running publishes
+nothing and answers `processed: 0`; it does not wait, and it does not queue a
+second batch. `triggeredAt` comes from the service's injected `Clock`, so it
+correlates with the poller's own log lines rather than with the wall clock.
 
 This endpoint is what makes the demo deterministic; without it AC-7 could only be
 tested by waiting out a timer.
@@ -737,6 +752,24 @@ Failure story, which is the other half:
 | 8 | `docker stop kafka`; post a transfer; press **Force Poll** | **Failed +1**; row `FAILED`, `Attempts 1`, non-empty Last Error with the cause. The transfer itself still returned 200 |
 | 9 | `docker start kafka`; press **Force Poll** | row becomes `PUBLISHED`, **Failed −1**, `Attempts` keeps its count — retry-then-success, visible |
 
+**Note on manual SQL.** When manually inserting rows for testing or demos, use
+`now() AT TIME ZONE 'UTC'` in your SQL script — never bare `now()`:
+
+```sql
+INSERT INTO outbox_events (id, aggregate_type, aggregate_id, event_type, payload, created_at)
+VALUES ('…', 'TRANSACTION', 'tx-demo', 'TRANSFER', '{"transactionId":"tx-demo"}',
+        now() AT TIME ZONE 'UTC');
+```
+
+The four `TIMESTAMP` columns hold **UTC wall-clock** values, because that is how
+Hibernate maps an `Instant` onto `timestamp without time zone`. A bare `now()`
+writes the server's *local* wall clock, so on a host at UTC+1 every hand-written
+row reads as an hour in the future: `created_at` sorts into the future and a
+`next_attempt_at` set that way makes the poller skip the row entirely until real
+time catches up. This is a fixture trap, not a service behaviour — every timestamp
+the application writes comes from its injected `Clock` and is already UTC, so the
+relay and the API agree with each other. It only bites the human writing SQL.
+
 ## Acceptance criteria
 
 - [ ] **AC-1 — dual write is closed, per step.** With the gate on and Kafka
@@ -773,8 +806,9 @@ Failure story, which is the other half:
       `transactionId` in `TransactionEventConsumer.java:29,42-46`. Scope of that
       guarantee is recorded in Design notes (in-memory, per JVM).
 - [ ] **AC-6 — API contract.** `GET` returns the exact six fields of §6 with the
-      exact DTO names and no `payload` unless `includePayload=true`; the counts
-      satisfy `pending+published+failed+parked == total`. An unauthenticated call
+      exact DTO names, and **no `payload` field at all** — not null, not opt-in;
+      the counts satisfy `pending+published+failed+parked == total`. An
+      unauthenticated call
       is **401** at the edge (`.anyExchange().authenticated()`,
       `gateway .../SecurityConfig.java:81`); an authenticated caller without
       `MANAGER` is **403** — from the service always, from the edge once Phase 5
@@ -892,8 +926,9 @@ Evaluate in order; first match wins:
 
 Order matters: a row that succeeded on its third attempt has `attempt_count = 3`
 and a non-null `published_at`, and must read `PUBLISHED`. The counters come from
-the same predicates (`count(*) FILTER (WHERE ...)` or four counts in one round
-trip), so the invariant holds by construction rather than by coincidence.
+the same predicates — four count queries, one per branch of this table, plus
+`count()` for the total — so the invariant holds by construction rather than by
+coincidence.
 
 ### Why `parked_at` on the same table, not a dead-letter table
 

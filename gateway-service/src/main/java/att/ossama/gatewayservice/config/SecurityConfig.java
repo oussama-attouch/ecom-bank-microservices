@@ -69,6 +69,13 @@ public class SecurityConfig {
                 // 404 (no handler) rather than a 403 — absent, not refused, the
                 // same contract as ledger-service's projection rebuild route.
                 .pathMatchers("/backoffice/**").hasRole(MANAGER_ROLE)
+                // Ledger admin API: MANAGER only. The service refuses a non-manager
+                // itself — CallerContext plus ForbiddenException — but that check
+                // only runs after the request has been routed. This is the layer
+                // that keeps a teller's request off a downstream service it should
+                // never reach, and the service's own check is the layer that
+                // survives a direct call to its port. Neither replaces the other.
+                .pathMatchers("/ledger-service/api/admin/**").hasRole(MANAGER_ROLE)
                 // E-commerce writes are a manager's job, not a teller's and not
                 // an auditor's. Before this rule the gateway only asked whether
                 // the caller was authenticated, so any signed-in user could
