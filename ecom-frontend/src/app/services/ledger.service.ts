@@ -5,6 +5,35 @@ import { Account, ChartSeries, KpiTrends, ProjectionRebuildReport } from '../mod
 import { atParam, query } from './at-param';
 import { silentWhen } from './http-context.tokens';
 
+/** One outbox row; `payload` is absent from the API by design. */
+export interface OutboxEvent {
+  id: string;
+  aggregateType: string;
+  aggregateId: string;
+  eventType: string;
+  status: 'PENDING' | 'PUBLISHED' | 'FAILED' | 'PARKED';
+  attempts: number;
+  lastError: string | null;
+  createdAt: string;
+  publishedAt: string | null;
+}
+
+/** The outbox as a whole: four counters over every row, plus the newest fifty. */
+export interface OutboxStatusResponse {
+  total: number;
+  pending: number;
+  published: number;
+  failed: number;
+  parked: number;
+  events: OutboxEvent[];
+}
+
+/** The result of one forced poll; `processed` counts events published, not claimed. */
+export interface OutboxPollResponse {
+  triggeredAt: string;
+  processed: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class LedgerService {
   private readonly base = '/ledger-service/api';
@@ -130,5 +159,31 @@ export class LedgerService {
   rebuildProjections(): Observable<ProjectionRebuildReport> {
     return this.http.post<ProjectionRebuildReport>(
       `${this.base}/admin/projections/rebuild`, {}, silentWhen(true));
+  }
+
+  /**
+   * The transactional outbox: four counters over every row and the newest fifty.
+   *
+   * <p>Silent, like the other admin reads: 404 here means the outbox gate is off
+   * on the ledger service and 403 means this session does not hold MANAGER — both
+   * are page states the component explains in its own words, and a global error
+   * toast would say neither.
+   */
+  getOutboxStatus(): Observable<OutboxStatusResponse> {
+    return this.http.get<OutboxStatusResponse>(
+      `${this.base}/admin/outbox`, silentWhen(true));
+  }
+
+  /**
+   * Runs the relay once, now, instead of waiting for its next tick.
+   *
+   * <p>`processed` counts events published, so 0 is a legitimate answer: the
+   * scheduled poll may already hold the relay's single-flight guard. Silent for
+   * the same reason as the read — the component owns the message, including the
+   * success toast.
+   */
+  triggerOutboxPoll(): Observable<OutboxPollResponse> {
+    return this.http.post<OutboxPollResponse>(
+      `${this.base}/admin/outbox/poll`, {}, silentWhen(true));
   }
 }

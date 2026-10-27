@@ -81,7 +81,11 @@ export class AppComponent implements OnInit {
       header: 'Observability',
       items: [
         { label: 'Live Events', icon: 'pi pi-bolt', route: '/observability/live' },
-        { label: 'Archived Transactions', icon: 'pi pi-inbox', route: '/observability/archived' }
+        { label: 'Archived Transactions', icon: 'pi pi-inbox', route: '/observability/archived' },
+        // Manager-only, like the API behind it: the relay's queue names transactions
+        // and their failures, so it is hidden from tellers by the same rule the
+        // backend enforces.
+        { label: 'Outbox', icon: 'pi pi-cloud-upload', route: '/observability/outbox', roles: ['MANAGER'] }
       ]
     },
     {

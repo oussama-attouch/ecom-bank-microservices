@@ -15,6 +15,7 @@ import { StatementComponent } from './components/statement/statement.component';
 import { JournalComponent } from './components/journal/journal.component';
 import { LiveEventStreamComponent } from './components/observability/live-event-stream/live-event-stream.component';
 import { ArchivedTransactionsComponent } from './components/observability/archived-transactions/archived-transactions.component';
+import { OutboxComponent } from './components/observability/outbox/outbox.component';
 import { UserAdminComponent } from './components/backoffice/user-admin/user-admin.component';
 import { LoginComponent } from './components/login/login.component';
 import { authGuard } from './guards/auth.guard';
@@ -61,6 +62,11 @@ export const routes: Routes = [
       // reason: it is the same ledger history the Sagas and Journal pages
       // already expose, only read back from the consumer's own copy.
       { path: 'observability/archived', component: ArchivedTransactionsComponent },
+      // Manager-only view of the transactional outbox. Guarded for the same reason
+      // as the API behind it: the queue names transactions and their failures, so
+      // it is an administrative surface. The guard is UX — the gateway and the
+      // ledger's own CallerContext check both refuse anyone without MANAGER.
+      { path: 'observability/outbox', component: OutboxComponent, canActivate: [roleGuard(['MANAGER'])] },
       // Manager-only access administration. The guard is UX — the gateway
       // enforces the same rule and answers 403 to anyone without the role.
       { path: 'backoffice/users', component: UserAdminComponent, canActivate: [roleGuard(['MANAGER'])] },

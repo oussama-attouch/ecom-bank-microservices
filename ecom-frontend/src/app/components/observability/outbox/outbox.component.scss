@@ -1,0 +1,178 @@
+:host {
+  display: block;
+}
+
+.title-block {
+  max-width: 82ch;
+}
+
+.page-sub {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+}
+
+.page-sub code {
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 0.9em;
+}
+
+.head-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+
+/* Counters. The left border carries the status colour; the label still spells the
+   status out, so colour is never the only signal. */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-left-width: 3px;
+  border-left-style: solid;
+  border-radius: var(--radius-lg);
+  background: var(--surface-0);
+}
+
+.stat-label {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--text-tertiary);
+}
+
+.stat-value {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-hint {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.tone-warn { border-left-color: var(--warning-text); }
+.tone-success { border-left-color: var(--success-text); }
+.tone-danger { border-left-color: var(--danger-text); }
+.tone-parked { border-left-color: var(--text-tertiary); }
+
+/* Data is on screen but the newest read failed: say so once, quietly, rather than
+   replacing the table with an error and losing the operator's view. */
+.stale-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--warning-soft);
+  color: var(--warning-text);
+  font-size: var(--text-sm);
+}
+
+/* A page state, not an incident: the gate is off, or this session is not a
+   manager. Deliberately not a red toast — nothing is broken. */
+.gate-error {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  background: var(--warning-soft);
+}
+
+.gate-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: var(--surface-0);
+  color: var(--warning-text);
+}
+
+.gate-body {
+  min-width: 0;
+}
+
+.gate-title {
+  margin: 0;
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.gate-hint {
+  margin: var(--space-1) 0 0;
+  max-width: 74ch;
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+}
+
+.gate-hint code {
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+  font-size: 0.85em;
+}
+
+/* Table cells */
+.mono-id {
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  white-space: nowrap;
+}
+
+.col-attempts {
+  width: 96px;
+}
+
+.attempts {
+  font-variant-numeric: tabular-nums;
+}
+
+.col-error {
+  max-width: 280px;
+}
+
+/* One line, elided; the full sentence is in the tooltip. */
+.error-cell {
+  display: inline-block;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.when {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.muted {
+  color: var(--text-secondary);
+}
+
+.total-note {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}

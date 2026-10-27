@@ -1,0 +1,161 @@
+<div class="page-head">
+  <div class="title-block">
+    <h2>Outbox</h2>
+    <p class="page-sub">
+      Events the ledger has committed but not yet published. The relay publishes them to
+      <code>ledger-events</code> on its own schedule; <strong>Force Poll</strong> runs it now.
+      The counters cover the whole table — the list below is only the newest fifty.
+    </p>
+  </div>
+  <div class="head-tools">
+    <p-button
+      label="Force Poll"
+      icon="pi pi-cloud-upload"
+      [loading]="polling()"
+      [disabled]="polling() || !!gateError()"
+      (onClick)="forcePoll()"></p-button>
+    <p-button
+      label="Refresh"
+      icon="pi pi-refresh"
+      severity="secondary"
+      [outlined]="true"
+      [loading]="loading()"
+      (onClick)="refresh()"></p-button>
+  </div>
+</div>
+
+@if (gateError(); as failure) {
+  <!-- A page state, not an incident: the gate is off (404) or this session does not
+       hold MANAGER (403). Never a bare "an error occurred". -->
+  <div class="gate-error" role="alert">
+    <span class="gate-icon"><i class="pi pi-lock"></i></span>
+    <div class="gate-body">
+      <p class="gate-title">{{ failure }}</p>
+      @if (failure === 'Outbox is disabled.') {
+        <p class="gate-hint">
+          Start the ledger service with <code>--ledger.outbox.enabled=true</code>. While the
+          flag is off the endpoints are absent, not merely refused, so the route answers 404.
+        </p>
+      } @else if (failure === 'You do not hold MANAGER role.') {
+        <p class="gate-hint">
+          An existing session keeps its roles for up to 15 minutes after a change. Signing out
+          and back in picks up the current ones.
+        </p>
+      }
+    </div>
+  </div>
+} @else if (loading() && !status()) {
+  <app-table-skeleton [rows]="5" [cols]="8"></app-table-skeleton>
+} @else {
+  <!-- The alias lives on a primary @if: Angular only allows `as` there, never on an
+       @else if branch. The outer chain has already established that there is a
+       response and no gate error, so this block is the data case. -->
+  @if (status(); as snapshot) {
+    <div class="stat-grid">
+      <div class="stat-card tone-warn">
+        <span class="stat-label">Pending</span>
+        <span class="stat-value">{{ snapshot.pending }}</span>
+        <span class="stat-hint">never attempted</span>
+      </div>
+      <div class="stat-card tone-success">
+        <span class="stat-label">Published</span>
+        <span class="stat-value">{{ snapshot.published }}</span>
+        <span class="stat-hint">acknowledged by the broker</span>
+      </div>
+      <div class="stat-card tone-danger">
+        <span class="stat-label">Failed</span>
+        <span class="stat-value">{{ snapshot.failed }}</span>
+        <span class="stat-hint">attempted, waiting for a retry</span>
+      </div>
+      <!-- Parked only when there are any: a permanently-zero card would suggest a
+           state this queue is meant never to reach. -->
+      @if (snapshot.parked > 0) {
+        <div class="stat-card tone-parked">
+          <span class="stat-label">Parked</span>
+          <span class="stat-value">{{ snapshot.parked }}</span>
+          <span class="stat-hint">attempts exhausted, never retried</span>
+        </div>
+      }
+    </div>
+
+    @if (stale()) {
+      <p class="stale-note" role="status">
+        <i class="pi pi-exclamation-triangle"></i>
+        Showing the last successful refresh; the newest one failed.
+      </p>
+    }
+
+    <p-table
+      [value]="snapshot.events"
+      [paginator]="snapshot.events.length > 10"
+      [rows]="10"
+      [rowHover]="true"
+      responsiveLayout="scroll">
+      <ng-template pTemplate="header">
+        <tr>
+          <th>Event ID</th>
+          <th>Aggregate ID</th>
+          <th>Event Type</th>
+          <th>Status</th>
+          <th class="col-attempts">Attempts</th>
+          <th>Last Error</th>
+          <th>Created At</th>
+          <th>Published At</th>
+        </tr>
+      </ng-template>
+
+      <ng-template pTemplate="body" let-event>
+        <tr>
+          <td class="mono-id">
+            <span [pTooltip]="event.id" tooltipPosition="top">{{ shortId(event.id) }}</span>
+          </td>
+          <td class="mono-id">
+            <span [pTooltip]="event.aggregateId" tooltipPosition="top">{{ shortId(event.aggregateId) }}</span>
+          </td>
+          <td>{{ event.eventType }}</td>
+          <td>
+            <!-- The word is always rendered: colour is never the only signal. -->
+            <p-tag [value]="event.status" [severity]="statusSeverity(event.status)"></p-tag>
+          </td>
+          <td class="col-attempts attempts">{{ event.attempts }}</td>
+          <td class="col-error">
+            @if (event.lastError) {
+              <span class="error-cell" [pTooltip]="event.lastError" tooltipPosition="top">
+                {{ event.lastError }}
+              </span>
+            } @else {
+              <span class="muted">—</span>
+            }
+          </td>
+          <td class="when">{{ event.createdAt | date: 'yyyy-MM-dd HH:mm:ss' }}</td>
+          <td class="when">
+            @if (event.publishedAt) {
+              {{ event.publishedAt | date: 'yyyy-MM-dd HH:mm:ss' }}
+            } @else {
+              <span class="muted">—</span>
+            }
+          </td>
+        </tr>
+      </ng-template>
+
+      <ng-template pTemplate="emptymessage">
+        <tr>
+          <td [attr.colspan]="8">
+            <app-empty-state
+              icon="pi pi-cloud-upload"
+              title="No outbox events yet."
+              hint="A transfer with the outbox gate on writes a row here before the relay publishes it.">
+            </app-empty-state>
+          </td>
+        </tr>
+      </ng-template>
+    </p-table>
+
+    <p class="total-note">
+      {{ snapshot.total }} row{{ snapshot.total === 1 ? '' : 's' }} in the table
+      @if (snapshot.events.length < snapshot.total) {
+        · showing the newest {{ snapshot.events.length }}
+      }
+    </p>
+  }
+}
