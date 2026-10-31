@@ -7,16 +7,21 @@
 ## 1. Current Branch & Status
 
 - **Branch:** `main`
-- **Tip:** this commit — `docs(context): finalize project state after live DLT verification`.
+- **Tip:** `0a73ec9` — `feat(frontend): add outbox observability UI`, the tip of the
+  transactional-outbox merge; this snapshot is the `docs(context): record
+  transactional outbox milestone` commit immediately on top of it.
 - **Remote:** in sync with `origin/main` (nothing unpushed)
 - **Working tree:** clean
 
 **What is on `main`:** the workflow scaffolding (`AGENTS.md`,
-`docs/CONTEXT/`, `specs/` templates, `docs/MEMORY.md`) plus two features
+`docs/CONTEXT/`, `specs/` templates, `docs/MEMORY.md`) plus three features
 delivered through it — the `ledger-events.DLT` consumer in `billing-service`,
-and **Backoffice access administration** (gateway facade, Keycloak realm
-client, and an Angular page for `MANAGER`). Both are merged; the delivering
-branches were `feature/workflow-scaffolding` and `feature/dlt-verification`.
+**Backoffice access administration** (gateway facade, Keycloak realm client,
+and an Angular page for `MANAGER`), and the **transactional outbox** in
+`ledger-service` (V4 schema, `ArchiveStep` seam, relay, admin API, and an
+Angular page under Observability). The delivering branches were
+`feature/workflow-scaffolding`, `feature/dlt-verification` and
+`feature/transactional-outbox`.
 
 **DLT consumer status: IMPLEMENTED AND VERIFIED END-TO-END** (`86d3036`
 implementation, `55afb4f` verification marker). Poison messages that exhaust the
@@ -101,16 +106,18 @@ version change, without an ADR. Schema is owned by Flyway in `ledger-service`;
 | **Project finalized** — every spec implemented, verified and merged; zero open items | this commit | Done |
 | **Live event streaming + archived transactions + observability** | merge `ae59999` | Done, inherited from `feature/live-event-stream` |
 | **Time-travel ledger queries + projection rebuild consistency check** | merge `ae59999` | Done, inherited from `feature/time-travel-ledger` |
+| **Transactional Outbox implemented** — V4 schema, ArchiveStep seam, OutboxPublisher, Admin API, and Angular UI. Verified end-to-end (Pending -> Published). | `0a73ec9` | Done |
 
 ## 5. Active Context
 
-**Project Status: Complete.** Both specs are implemented, verified and merged to
-`main`; there are no open items.
+**Project Status: complete for the delivered features.** Three specs are
+implemented, verified and merged to `main`; there are no open items.
 
 | Spec | State | Evidence |
 |---|---|---|
 | `specs/001-dlt-consumer.md` | Implemented and verified end-to-end | A live poison message was retried three times, republished to `ledger-events.DLT`, consumed and persisted; the `DLT_CONSUMER:` marker appeared in the billing-service console |
 | `specs/002-backoffice.md` | Implemented and verified | The API was exercised against the live Keycloak — list, role edit, enable/disable, 403 for non-managers, 409 lockout guards — and the page was checked in the browser by the owner |
+| `specs/003-outbox.md` | Implemented, verified end-to-end and merged | The demo ran in the browser: a transfer with Kafka down returned **200** and left the row `PENDING` with `Attempts 0`; after Kafka restarted, **Force Poll** published it and the row read `PUBLISHED` with `Attempts 0`. The relay's abort-on-broker-failure, backoff and in-place parking were exercised against a dead broker, and the API's own 403 plus the gateway's 403 for a teller were both observed |
 
 `MANAGER` has a page of its own at `/backoffice/users`, reachable from the
 "Administration → Backoffice" nav item (rendered only for managers) and behind
@@ -147,6 +154,24 @@ Frontend routes now include `backoffice/users`; every other route is unchanged.
   re-reads the topic from `earliest`.
 - The backoffice's last-manager guard is racy — Keycloak offers no transaction
   across the read and the write — as recorded in the spec.
+- The outbox covers the saga's `publishStrict` only. The direct
+  `/api/transactions` path still publishes best-effort without writing a row, so
+  its dual-write window is unchanged.
+- A parked outbox row is never retried and there is no unpark tooling: an operator
+  reads it and fixes the cause. The API deliberately does not expose `payload`,
+  and the four `TIMESTAMP` columns hold UTC wall clock — hand-written demo SQL
+  must use `now() AT TIME ZONE 'UTC'`, or the poller skips the row as future-dated.
+- `billing-service` dedupes replays in memory, so a replay after a restart can
+  duplicate an archive row; the outbox is at-least-once, as recorded in the spec.
+
+**Next up.** The outbox pattern is complete: publication is now durable end to
+end — the saga commits one `outbox_events` row together with its ARCHIVE step, the
+relay publishes it with per-row backoff and in-place parking, and the page makes
+the queue legible to a MANAGER. The natural next features are the **Dead-Letter
+Console** (an operator view over `dead_letter_transactions`, which today is a
+database query) and a **Reconciliation service** (checking the event store, the
+journal and `billing-service`'s archive against each other on a schedule). Neither
+has a spec yet.
 
 Any further feature still starts the same way: a spec in `specs/` first, then
 the three-step loop in §3.
