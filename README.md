@@ -218,6 +218,12 @@ Drag the scrubber to any past instant and the whole Command Center describes it.
 
 A `MANAGER`-only page for Keycloak user administration. Managers can search for users, assign or revoke `TELLER`/`MANAGER`/`AUDITOR` roles, and enable or disable accounts without leaving the platform. The gateway enforces these roles at the edge using a Keycloak Admin API facade.
 
+### 4.15 Outbox — Kafka Outage Resilience
+
+![Outbox Dashboard](docs/screenshots/outbox/outbox-dashboard.png)
+
+The Transactional Outbox dashboard. The saga writes its `ARCHIVE` step and one `outbox_events` row in the same Postgres transaction, so when Kafka is unavailable the transfer still commits and the event is queued instead of lost. The relay publishes it once the broker recovers — the row above was created at 18:37:26 and acknowledged at 18:37:37 — and `Attempts 0` shows it went out on the first attempt, with no retry needed. The counters cover the whole table rather than the fifty rows on screen, **Force Poll** runs the relay on demand instead of waiting for its tick, and the page is `MANAGER`-only at the gateway, in the service and on the route guard.
+
 ---
 
 ## 5. Architecture
