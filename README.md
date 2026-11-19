@@ -224,6 +224,12 @@ A `MANAGER`-only page for Keycloak user administration. Managers can search for 
 
 The Transactional Outbox dashboard. The saga writes its `ARCHIVE` step and one `outbox_events` row in the same Postgres transaction, so when Kafka is unavailable the transfer still commits and the event is queued instead of lost. The relay publishes it once the broker recovers — the row above was created at 18:37:26 and acknowledged at 18:37:37 — and `Attempts 0` shows it went out on the first attempt, with no retry needed. The counters cover the whole table rather than the fifty rows on screen, **Force Poll** runs the relay on demand instead of waiting for its tick, and the page is `MANAGER`-only at the gateway, in the service and on the route guard.
 
+### 4.16 System Health — Fleet Health, Circuit Breakers & Grafana
+
+![System Health Dashboard](docs/images/system-health-dashboard.png)
+
+The single pane of glass, `MANAGER`-only, polling every five seconds. Each card is one **registered instance**, probed on its **management port** rather than the port Eureka advertises — both are shown, because a card that displays `8083` while probing `18083` is how a misrouted health check gets diagnosed as a dead service. Green is `UP`, yellow is `LAGGING`, red is `DOWN`. `LAGGING` is a first-class status, not a shade of `DOWN`: it means the service is behind on its Kafka group but still serving, and it is deliberately mapped to HTTP 200 so a backlog never pulls a pod out of rotation. The middle row lists every Resilience4j circuit breaker in the fleet — the gateway's registry is per-JVM and empty, so the state is collected from `order-service` (`orderEnrichment`) and `billing-service` (`ledgerLiveStream`) — and the `—` under failure rate is "no calls recorded yet", which is different from 0%. The Grafana panel below it is the same data as time series, embedded from a provisioned dashboard.
+
 ---
 
 ## 5. Architecture
@@ -238,7 +244,7 @@ The Transactional Outbox dashboard. The saga writes its `ARCHIVE` step and one `
 | **Ledger** | Event-sourced — the only service with Postgres; other contexts use in-memory H2 |
 | **Kafka** | Opt-in transport — `ledger.publisher=http` by default; switch to `kafka` for exactly-once archival |
 | **Security** | Three-layer RBAC — frontend UX → gateway trust boundary → backend authorization |
-| **Observability** | Live WebSocket stream of every saga step and Kafka event; archived-transaction view proving end-to-end delivery |
+| **Observability** | Micrometer → Prometheus → Grafana across all 8 services, on a separate management port; `/actuator/prometheus`, Kubernetes liveness/readiness probes, a Kafka consumer-lag health indicator, and a `MANAGER`-only System Health page that aggregates every instance and circuit breaker. Plus the live WebSocket stream and archived-transaction views |
 
 ---
 
@@ -281,6 +287,18 @@ The Transactional Outbox dashboard. The saga writes its `ARCHIVE` step and one `
 | 🔬 **Statistical anomaly detection** | 3σ outlier flagging against a rolling 30-day baseline |
 | 🩺 **Pipeline health KPIs** | Projection lag, audit trail completeness, dashboard SLA compliance |
 | 📉 **SQL aggregate optimization** | 10.8s → 200ms via event-replay elimination |
+
+### 6.4 Observability & Resilience
+
+| Feature | Detail |
+|---|---|
+| 📊 **Prometheus metrics** | `micrometer-registry-prometheus` in all 8 services, scraped every 15 s. Actuator exposure is a hand-written allow-list, never `*`: `heapdump` (whole-heap, so a credential-extraction primitive), `loggers` (a POST sets any level), `env` and `configprops` are excluded everywhere, including in both `config-repo` overrides that were publishing them |
+| 📈 **Grafana dashboards** | Provisioned from JSON (`monitoring/grafana/dashboards/ecom-bank-overview.json`), so a fresh `docker-compose up` starts with the dashboard already there. Panels: instances up, request rate, **p95 from pooled histogram buckets** (a per-JVM percentile cannot be aggregated across instances), 5xx rate, JVM heap, and Kafka consumer-group lag. Embedded in the app via `iframe` behind `allow_embedding` + anonymous `Viewer` |
+| 🔌 **Resilience4j circuit breakers** | `orderEnrichment` in `order-service` (50% failure rate over a 10-call window, 10 s open, 3 half-open probes) and `ledgerLiveStream` in `billing-service`. Retry uses a **positive** exception list, so a 4xx never retries — on the Feign path that type is `FeignException.FeignClientException`, not `HttpClientErrorException`. Degraded reads answer a typed `503 ApiError`, never a 500 stack trace |
+| 🚦 **Kubernetes probes** | `/actuator/health/liveness` is `livenessState,ping` **only** — a failing database must never restart a healthy JVM. `/actuator/health/readiness` includes `db` (and `kafkaLag` in `billing-service`), so traffic stops while the pod is killed and restarted. A `startupProbe` gives Flyway and Hibernate 60 s before liveness is allowed to judge |
+| 🔩 **Bulkheads & retry** | Semaphore bulkheads (20 concurrent for order enrichment, 5 for the ledger notification) bound the fan-out so one slow downstream cannot occupy every worker. Rejected calls are excluded from the retry budget: retrying a full bulkhead or an open circuit only burns attempts that cannot succeed |
+| 🩺 **Kafka lag health indicator** | Custom `HealthIndicator` on `billing-service` sampling committed vs log-end offsets for `billing-service` and `billing-service-dlt` — cached, refreshed off the request thread, so `/actuator/health` never blocks on a broker round trip (measured 5–13 ms). `billing-service-dlt` has a threshold of 0: every message there is a poison message an operator has to read |
+| 🖥️ **System Health dashboard** | Angular page at `/observability/system-health`, `MANAGER`-only at route guard, gateway and API. Aggregates via `GET /api/admin/system-health` and `/api/admin/circuit-breakers`, both fanning out over `WebClient` with a 2 s budget so one dead service cannot stall the page |
 
 ---
 
