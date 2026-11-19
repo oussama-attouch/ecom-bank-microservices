@@ -1,0 +1,143 @@
+<!--
+  The fleet view. Three independent rows, three independent fates: the cards can
+  be blank while the breaker table is fine, and both can be live while Grafana is
+  refusing to be framed. Each says so where it happens.
+-->
+<header class="page-head">
+  <div class="page-title">
+    <h1>System Health</h1>
+    <p class="page-sub">
+      Every registered instance, polled through its management port every 5 seconds.
+    </p>
+  </div>
+  <div class="page-meta">
+    <span class="overall-badge tone-{{ tone(overall()) }}" [class.is-live]="!gatewayDown()">
+      {{ gatewayDown() ? 'UNREACHABLE' : overall() }}
+    </span>
+    @if (timestamp(); as ts) {
+      <span class="stamp">snapshot {{ ts | date: 'HH:mm:ss' }}</span>
+    }
+    <button type="button" class="refresh" (click)="refreshNow()" [disabled]="refreshing()">
+      <i class="pi" [class.pi-refresh]="!refreshing()" [class.pi-spinner]="refreshing()" [class.pi-spin]="refreshing()"></i>
+      Refresh
+    </button>
+  </div>
+</header>
+
+@if (gatewayDown()) {
+  <div class="global-error" role="alert">
+    <i class="pi pi-exclamation-triangle"></i>
+    <div>
+      <strong>The gateway did not answer.</strong>
+      <p>
+        <code>/api/admin/system-health</code> failed, so nothing below is live. Cards show the
+        last successful snapshot. This is the gateway or your session, not necessarily the fleet.
+      </p>
+    </div>
+  </div>
+}
+
+<!-- Top row: one card per instance. -->
+<section class="row">
+  <h2 class="row-title">Services <span class="row-count">{{ services().length }}</span></h2>
+  @if (services().length === 0) {
+    <p class="empty">No instances registered, or the gateway could not reach Eureka.</p>
+  } @else {
+    <div class="card-grid">
+      @for (svc of services(); track svc.name + '/' + svc.host + ':' + svc.appPort) {
+        <article class="svc-card tone-{{ tone(svc.status) }}">
+          <div class="svc-head">
+            <span class="svc-name">{{ svc.name }}</span>
+            <span class="svc-status">{{ svc.status }}</span>
+          </div>
+          <div class="svc-meta">
+            <span class="svc-instance" [title]="'probed http://' + svc.host + ':' + svc.managementPort + '/actuator/health'">
+              {{ svc.host }}
+            </span>
+            <span class="svc-latency">{{ svc.latencyMs }} ms</span>
+          </div>
+          <!-- Both ports, always. appPort is what Eureka registered; mgmtPort is
+               where the probe actually landed. Showing one while probing the
+               other is how a 404 gets diagnosed as a dead service. -->
+          <div class="svc-ports">
+            <span class="port-chip" title="Port registered with Eureka — business traffic">app {{ svc.appPort }}</span>
+            <span class="port-chip port-chip-mgmt" title="Where this card's probe was sent">mgmt {{ svc.managementPort }}</span>
+          </div>
+          @if (svc.error) {
+            <p class="svc-error" [title]="svc.error">{{ svc.error }}</p>
+          } @else if (svc.details) {
+            <p class="svc-details">component detail available</p>
+          }
+        </article>
+      }
+    </div>
+  }
+</section>
+
+<!-- Middle row: circuit breakers. -->
+<section class="row">
+  <h2 class="row-title">Circuit Breakers <span class="row-count">{{ breakers().length }}</span></h2>
+  @if (breakersDown()) {
+    <p class="empty">The breaker fan-out failed; the gateway answered but the per-service registries did not.</p>
+  } @else if (breakers().length === 0) {
+    <p class="empty">No breakers registered in any instance.</p>
+  } @else {
+    <table class="breaker-table">
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Instance</th>
+          <th>State</th>
+          <th class="num">Failure rate</th>
+          <th class="num">Buffered</th>
+          <th class="num">Rejected</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (b of breakers(); track b.service + '/' + b.name) {
+          <tr>
+            <td class="mono">{{ b.service }}</td>
+            <td class="mono">{{ b.name }}</td>
+            <td><span class="badge tone-{{ breakerTone(b.state) }}">{{ b.state }}</span></td>
+            <td class="num">{{ failureText(b) }}</td>
+            <td class="num">{{ b.bufferedCalls }}</td>
+            <td class="num">{{ b.notPermittedCalls }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+</section>
+
+<!-- Bottom row: the time series this page cannot compute itself. -->
+<section class="row">
+  <h2 class="row-title">
+    Deep Metrics
+    <a class="row-link" [href]="grafanaLink" target="_blank" rel="noopener noreferrer">open in Grafana</a>
+  </h2>
+  <div class="embed">
+    <!-- `loading="eager"`, not `lazy`. A lazy iframe is not fetched until it is
+         near the viewport, so a screenshot of the page taken before scrolling to
+         it shows an empty box that has nothing to do with Grafana.
+
+         `height`/`frameborder` are presentational attributes and lose to CSS:
+         the real height comes from `.embed iframe` in the stylesheet (600px) and
+         the border from the same rule. They are here so the frame is sized
+         sanely before the stylesheet applies, not because they are load-bearing. -->
+    <iframe
+      [src]="grafanaUrl"
+      title="Grafana — E-Com Bank overview"
+      height="600"
+      frameborder="0"
+      loading="eager"
+      referrerpolicy="no-referrer"
+      allowfullscreen>
+    </iframe>
+  </div>
+  <p class="embed-note">
+    Blank frame with the Grafana logo means the document loaded but its app did not boot — check
+    the Network tab for the dashboard API call, not the frame itself. A refusal in the Console
+    naming <code>X-Frame-Options</code> is the other case, and
+    <code>GF_SECURITY_ALLOW_EMBEDDING</code> is the fix for that one.
+  </p>
+</section>

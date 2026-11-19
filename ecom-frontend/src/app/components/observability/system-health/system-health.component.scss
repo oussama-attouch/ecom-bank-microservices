@@ -1,0 +1,303 @@
+/* =============================================================================
+   System Health. Same tone-class pattern as the rest of the observability pages:
+   a tone binds --tone-colour to a design token and every rule below refers only
+   to that name, so a status becomes a colour in exactly one place.
+   ============================================================================= */
+
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* ---- Header ---- */
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.page-title h1 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-kpi);
+  color: var(--text-primary);
+}
+
+.page-sub {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.page-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.stamp {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.overall-badge {
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--tone-colour, var(--border-subtle));
+  color: var(--tone-colour, var(--text-secondary));
+  background: color-mix(in srgb, var(--tone-colour, var(--text-secondary)) 12%, transparent);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+/* A stale badge is dimmed rather than recoloured: the status did not change,
+   only the evidence for it stopped arriving. */
+.overall-badge:not(.is-live) { opacity: 0.55; }
+
+.refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-0);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.refresh:disabled { opacity: 0.6; cursor: default; }
+
+/* ---- Global error ---- */
+
+.global-error {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--danger);
+  border-left-width: 4px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  color: var(--text-primary);
+}
+
+.global-error p { margin: var(--space-1) 0 0; font-size: var(--text-sm); color: var(--text-secondary); }
+.global-error code { font-family: var(--font-mono); font-size: var(--text-xs); }
+
+/* ---- Rows ---- */
+
+.row { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.row-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.row-count {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.row-link {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--brand-primary);
+  text-decoration: none;
+}
+
+.empty {
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+}
+
+/* ---- Service cards ---- */
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-3);
+}
+
+.svc-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--surface-0);
+  border: 1px solid var(--border-subtle);
+  /* The requested traffic light: green UP, yellow LAGGING, red DOWN. The colour
+     is the border and the status word, never a filled card — a wall of saturated
+     rectangles is unreadable and hides the one that is red. */
+  border-left: 4px solid var(--tone-colour, var(--text-tertiary));
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+}
+
+.svc-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.svc-name {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.svc-status {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--tone-colour, var(--text-secondary));
+}
+
+.svc-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.svc-latency { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+
+.svc-error {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--danger);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.svc-details { margin: 0; font-size: var(--text-xs); color: var(--text-tertiary); }
+
+/* ---- Circuit breaker table ---- */
+
+.breaker-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface-0);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+
+.breaker-table th,
+.breaker-table td {
+  padding: var(--space-3);
+  text-align: left;
+  font-size: var(--text-sm);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.breaker-table th {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--text-tertiary);
+}
+
+.breaker-table tbody tr:last-child td { border-bottom: none; }
+.breaker-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.breaker-table .mono { font-family: var(--font-mono); font-size: var(--text-xs); }
+
+.badge {
+  display: inline-block;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--tone-colour, var(--border-subtle));
+  color: var(--tone-colour, var(--text-secondary));
+  background: color-mix(in srgb, var(--tone-colour, var(--text-secondary)) 12%, transparent);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+/* ---- Grafana embed ---- */
+
+.embed {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background: var(--surface-0);
+}
+
+.embed iframe {
+  display: block;
+  width: 100%;
+  /* 600px, and this is the value that wins: an iframe's `height` attribute is a
+     presentational hint and CSS overrides it, so height="600" in the template
+     alone would have changed nothing. */
+  height: 600px;
+  border: 0;
+}
+
+.embed-note {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.embed-note code { font-family: var(--font-mono); }
+
+/* ---- Tone → token ---- */
+
+.tone-up      { --tone-colour: var(--success); }
+.tone-lagging { --tone-colour: var(--warning); }
+.tone-down    { --tone-colour: var(--danger); }
+.tone-unknown { --tone-colour: var(--text-tertiary); }
+
+/* ---- Port chips ---- */
+
+/* appPort and managementPort side by side, and visually distinct: the management
+   one is where the probe went, so it is the one that explains a failure. */
+.svc-ports {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.port-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* The probed port is the one to read first when a card is red. */
+.port-chip-mgmt {
+  border-color: color-mix(in srgb, var(--tone-colour, var(--text-tertiary)) 45%, transparent);
+  color: var(--text-secondary);
+}

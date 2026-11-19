@@ -85,7 +85,11 @@ export class AppComponent implements OnInit {
         // Manager-only, like the API behind it: the relay's queue names transactions
         // and their failures, so it is hidden from tellers by the same rule the
         // backend enforces.
-        { label: 'Outbox', icon: 'pi pi-cloud-upload', route: '/observability/outbox', roles: ['MANAGER'] }
+        { label: 'Outbox', icon: 'pi pi-cloud-upload', route: '/observability/outbox', roles: ['MANAGER'] },
+        // Manager-only, and for a stronger reason than the others: it names every
+        // instance, its latency and its failures, which is a topology map of the
+        // estate. The gateway enforces the same role on /api/admin/**.
+        { label: 'System Health', icon: 'pi pi-heart', route: '/observability/system-health', roles: ['MANAGER'] }
       ]
     },
     {

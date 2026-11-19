@@ -35,6 +35,15 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- /actuator/prometheus. No <version>: spring-boot-dependencies manages
+             Micrometer (1.13.6 for Boot 3.3.5), so the registry cannot drift from
+             the micrometer-core the actuator already pulls in. Presence of this
+             artifact is what makes the endpoint exist — without it "prometheus"
+             in the exposure list silently 404s. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>

@@ -1,0 +1,30 @@
+# Grafana datasource provisioning — specs/005-observability-resilience.md, step 1.
+#
+# Provisioned rather than clicked: a datasource added through the UI lives in the
+# Grafana SQLite volume, so a fresh `docker-compose up` starts with an empty
+# Grafana and the "datasource is green" check has to be repeated by hand every
+# time. This file is the difference between a demo you can restart and one you
+# have to rebuild.
+#
+# `uid` is pinned so a dashboard can reference the datasource by name that cannot
+# change when someone renames it in the UI.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: ecom-bank-prometheus
+    type: prometheus
+    access: proxy
+    # Container-to-container name, not host.docker.internal: Grafana queries
+    # Prometheus, and Prometheus is the one that reaches out to the host.
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 15s
+      httpMethod: POST
+      # Matches prometheus.yml's scrape_interval, so PromQL rate() windows line
+      # up with the actual sample spacing instead of being flagged as a
+      # resolution mismatch.
+      prometheusType: Prometheus
+      prometheusVersion: 2.54.0

@@ -66,3 +66,96 @@ services:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
     depends_on:
       - kafka
+
+  # ---------------------------------------------------------------------------
+  # Observability — specs/005-observability-resilience.md, step 1
+  # ---------------------------------------------------------------------------
+  # These two are the only services here that are not part of the application.
+  # The eight Spring Boot services run on the host (the jars, or
+  # `mvn spring-boot:run`), and Prometheus reaches them through
+  # host.docker.internal — see monitoring/prometheus/prometheus.yml.
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    # Makes host.docker.internal resolve on Linux too, not just Docker Desktop.
+    # Without it every target in prometheus.yml reads DOWN on a Linux host.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      # Declared rather than inherited: `command` replaces the image's CMD, so
+      # --storage.tsdb.path has to be restated or the time series land on the
+      # container's writable layer and disappear with it.
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # Retention by time only: 15 days is plenty for a demo. A real deployment
+      # sets --storage.tsdb.retention.size as well, or the volume fills the disk.
+      - --storage.tsdb.retention.time=15d
+      # Lets an edited prometheus.yml be picked up with
+      # `curl -X POST localhost:9090/-/reload` instead of a container restart.
+      # Fine on a developer machine; it is an unauthenticated write on 9090, so
+      # drop it anywhere the port is reachable by anyone else.
+      - --web.enable-lifecycle
+    restart: unless-stopped
+
+  grafana:
+    # Pinned, not `latest`: `latest` makes a rebuild non-reproducible and silently
+    # upgrades the UI under a dashboard whose panels someone tuned by hand.
+    # GRAFANA_TAG=latest is there for the case where that trade is wanted.
+    image: grafana/grafana:${GRAFANA_TAG:-11.2.0}
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      # DEV ONLY default, overridable from the environment. The fallback is
+      # committed, so it must never be treated as a production credential.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+
+      # ---- Framing -------------------------------------------------------
+      # Without this Grafana answers with X-Frame-Options. Note what it does and
+      # does not explain: a *blocked* frame never shows Grafana's own logo, so a
+      # white box with the logo in it is not this setting failing — it is the SPA
+      # failing to boot after the shell loaded. Kept because it is still required.
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+
+      # ---- Anonymous access ----------------------------------------------
+      # Lets the iframe load without a Grafana session. Viewer is read-only.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      # Easy to miss and fails silently: anonymous login targets this org name,
+      # and its default is the literal string "Main Org.". If the org was ever
+      # renamed, anonymous sign-in fails and the frame is redirected to /login
+      # with no error anywhere. Pinned here so the behaviour cannot depend on a
+      # display name someone edited in the UI.
+      GF_AUTH_ANONYMOUS_ORG_NAME: ${GRAFANA_ANONYMOUS_ORG_NAME:-Main Org.}
+
+      # ON, as directed. Be clear about what it costs while an embed is still
+      # being debugged: this removes the only way to sign in as an administrator.
+      # If anonymous access is not actually taking effect, the frame shows a
+      # blank page with a logo and there is no route into the UI that would
+      # explain why. Recover by forcing it back off for one start:
+      #   $env:GRAFANA_DISABLE_LOGIN_FORM='false'; docker-compose up -d --force-recreate grafana
+      GF_AUTH_DISABLE_LOGIN_FORM: ${GRAFANA_DISABLE_LOGIN_FORM:-true}
+
+      # ---- The usual cause of a preloader that never finishes -------------
+      # Grafana builds its asset and API URLs from this. If it is unset or names
+      # a different origin/port than the browser used, the SPA boots, requests
+      # its bundle from the wrong place, and sits on the preloader forever — a
+      # white page with a logo, which is precisely the reported symptom. Pinned
+      # to the origin the iframe actually uses.
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+    volumes:
+      # Datasources and dashboards are provisioned from disk, so a fresh
+      # `docker-compose up` starts with them already there instead of needing the
+      # same clicks repeated.
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    restart: unless-stopped

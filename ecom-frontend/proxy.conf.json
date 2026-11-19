@@ -50,5 +50,14 @@
     "logLevel": "debug",
     "timeout": 60000,
     "proxyTimeout": 60000
+  },
+  "//admin": "The gateway's own /api/admin/** controllers (system health, circuit breakers). These carry no service-id prefix, so none of the entries above match them — without this the dev server answers 404 and the page reads as broken.",
+  "/api": {
+    "target": "http://localhost:8888",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug",
+    "timeout": 60000,
+    "proxyTimeout": 60000
   }
 }

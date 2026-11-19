@@ -16,6 +16,7 @@ import { JournalComponent } from './components/journal/journal.component';
 import { LiveEventStreamComponent } from './components/observability/live-event-stream/live-event-stream.component';
 import { ArchivedTransactionsComponent } from './components/observability/archived-transactions/archived-transactions.component';
 import { OutboxComponent } from './components/observability/outbox/outbox.component';
+import { SystemHealthComponent } from './components/observability/system-health/system-health.component';
 import { UserAdminComponent } from './components/backoffice/user-admin/user-admin.component';
 import { LoginComponent } from './components/login/login.component';
 import { authGuard } from './guards/auth.guard';
@@ -67,6 +68,8 @@ export const routes: Routes = [
       // it is an administrative surface. The guard is UX — the gateway and the
       // ledger's own CallerContext check both refuse anyone without MANAGER.
       { path: 'observability/outbox', component: OutboxComponent, canActivate: [roleGuard(['MANAGER'])] },
+      // The fleet view. Manager-only: it maps every instance and its failures.
+      { path: 'observability/system-health', component: SystemHealthComponent, canActivate: [roleGuard(['MANAGER'])] },
       // Manager-only access administration. The guard is UX — the gateway
       // enforces the same rule and answers 403 to anyone without the role.
       { path: 'backoffice/users', component: UserAdminComponent, canActivate: [roleGuard(['MANAGER'])] },

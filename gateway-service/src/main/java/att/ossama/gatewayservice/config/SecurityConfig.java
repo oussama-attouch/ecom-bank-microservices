@@ -85,6 +85,15 @@ public class SecurityConfig {
                 .pathMatchers(HttpMethod.PUT, ECOMMERCE_WRITE_PATHS).hasRole(MANAGER_ROLE)
                 .pathMatchers(HttpMethod.PATCH, ECOMMERCE_WRITE_PATHS).hasRole(MANAGER_ROLE)
                 .pathMatchers(HttpMethod.DELETE, ECOMMERCE_WRITE_PATHS).hasRole(MANAGER_ROLE)
+                // System health dashboard. MANAGER, not ADMIN: the realm holds
+                // TELLER/MANAGER/AUDITOR and no ADMIN (keycloak/realm-export.json),
+                // so `hasRole(ADMIN)` would compile, deploy and answer 403 to every
+                // human who could ever hold a token. MANAGER is what every other
+                // administrative surface here already requires.
+                //
+                // Not public on purpose: the payload names every instance, its
+                // latency and its failures, which is a topology map of the estate.
+                .pathMatchers("/api/admin/**").hasRole(MANAGER_ROLE)
                 .anyExchange().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2

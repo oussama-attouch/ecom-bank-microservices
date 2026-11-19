@@ -1,0 +1,158 @@
+# Reference Kubernetes manifests — specs/005-observability-resilience.md, step 2.
+#
+# ledger-service is shown because it has the two properties that make probes a
+# real decision rather than boilerplate: a mandatory external dependency
+# (Postgres) and a startup that takes ~20s while Flyway migrates.
+#
+# THREE PORTS, THREE JOBS. Do not collapse them:
+#   8085  application traffic   (what the gateway routes to)
+#   8081  management traffic    (liveness, readiness, /actuator/prometheus)
+#   5433  Postgres              (not this pod)
+#
+# MGMT_PORT=8081 here is exactly the approved scheme, and it is safe in a pod
+# because every pod has its own network namespace. It is NOT safe on the shared
+# developer host, which is why the properties files default to app port + 10000.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ledger-service
+  labels:
+    app: ledger-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ledger-service
+  template:
+    metadata:
+      labels:
+        app: ledger-service
+    spec:
+      # Must exceed spring.lifecycle.timeout-per-shutdown-phase (30s) or the
+      # kubelet SIGKILLs the pod mid-request during a rolling update.
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: ledger-service
+          image: ecom-bank/ledger-service:0.0.1-SNAPSHOT
+          ports:
+            - name: http
+              containerPort: 8085
+            - name: management
+              containerPort: 8081
+          env:
+            - name: MGMT_PORT
+              value: "8081"
+            - name: SERVER_PORT
+              value: "8085"
+            - name: LEDGER_DB_URL
+              value: jdbc:postgresql://postgres:5432/ledger_db
+            - name: LEDGER_DB_USER
+              valueFrom:
+                secretKeyRef: { name: ledger-db, key: username }
+            - name: LEDGER_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: ledger-db, key: password }
+
+          # LIVENESS — "is this JVM still able to make progress?"
+          #
+          # The group is `livenessState,ping` and nothing else, so this probe
+          # cannot be failed by Postgres, Kafka or a downstream service. That is
+          # the whole constraint: a restart cannot fix a dependency, and it does
+          # destroy a pod that may still be serving from cache. A probe that
+          # watches dependencies converts one outage into a restart loop, which
+          # is strictly worse.
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          # READINESS — "should this pod receive traffic right now?"
+          #
+          # The group is `readinessState,db`, so a pod whose connection pool
+          # cannot reach Postgres is taken out of the Service endpoints without
+          # being killed. 503 from this endpoint is the intended signal.
+          #
+          # LAGGING never appears here. Even where kafkaLag is a readiness
+          # member (billing-service), that status maps to HTTP 200, so a backlog
+          # alerts without moving traffic.
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: management
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+            # One success is enough to start receiving traffic; recovery should
+            # be immediate, unlike failure detection.
+            successThreshold: 1
+
+          # STARTUP — "has it finished booting at all?"
+          #
+          # Flyway + Hibernate + Eureka take ~20s here. Without a startup probe,
+          # liveness's failureThreshold x periodSeconds is the entire startup
+          # budget, and a slow migration reads as a hung process and gets killed
+          # in a loop that never lets it finish. 30 x 2s = 60s of grace, and the
+          # other two probes do not run until it passes.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+            periodSeconds: 2
+            timeoutSeconds: 3
+            failureThreshold: 30
+
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 768Mi
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ledger-service
+spec:
+  # APPLICATION traffic only. The management port is deliberately absent from
+  # this Service: probes are made against the pod IP by the kubelet, and
+  # /actuator/** must not become reachable through service discovery.
+  selector:
+    app: ledger-service
+  ports:
+    - name: http
+      port: 8085
+      targetPort: http
+---
+# How Prometheus reaches the management port, given the Service above exposes
+# only 8085. In-cluster the scraper uses pod discovery, not this Service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ledger-service-mgmt
+  annotations:
+    # Picked up by a Prometheus kubernetes_sd_configs role: pod/endpoints relabel
+    # rule. Replace monitoring/prometheus/prometheus.yml's static_configs with
+    # that when moving off the compose stack.
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8081"
+    prometheus.io/path: /actuator/prometheus
+spec:
+  selector:
+    app: ledger-service
+  ports:
+    - name: management
+      port: 8081
+      targetPort: management

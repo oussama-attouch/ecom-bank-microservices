@@ -1,0 +1,19 @@
+# Grafana dashboard provider — specs/005-observability-resilience.md, step 5.
+#
+# Scans the mounted dashboards directory and installs whatever it finds. The
+# dashboards are read-only and overwritten on restart, so the JSON file is the
+# source of truth: editing the dashboard in the UI and expecting it to survive a
+# `docker-compose down` is the mistake this prevents.
+apiVersion: 1
+
+providers:
+  - name: ecom-bank
+    orgId: 1
+    folder: E-Com Bank
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

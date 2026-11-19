@@ -17,6 +17,13 @@ import java.util.List;
  * five minutes and logs a warning when any service reports unhealthy or is
  * unreachable. This catches slow in-memory / connection-pool degradation before
  * it surfaces as 500s on data endpoints.
+ *
+ * <p>The ports below are the <em>management</em> ports, not the application
+ * ports. Since specs/005-observability-resilience.md step 2 each service listens
+ * for /actuator/** on its own listener (app port + 10000 by default), so polling
+ * 8081–8085 here would get a 404 from all eight services and report the whole
+ * stack as DOWN — a watchdog that fails open is worse than none, because it
+ * trains its reader to ignore it.
  */
 @Component
 public class ServiceHealthChecker {
@@ -33,14 +40,14 @@ public class ServiceHealthChecker {
                 .setReadTimeout(Duration.ofSeconds(5))
                 .build();
 
-        targets.add(new Target("discovery-service", baseUrl, 8761));
-        targets.add(new Target("config-service", baseUrl, 9999));
-        targets.add(new Target("gateway-service", baseUrl, 8888));
-        targets.add(new Target("customer-service", baseUrl, 8081));
-        targets.add(new Target("inventory-service", baseUrl, 8082));
-        targets.add(new Target("billing-service", baseUrl, 8083));
-        targets.add(new Target("order-service", baseUrl, 8084));
-        targets.add(new Target("ledger-service", baseUrl, 8085));
+        targets.add(new Target("discovery-service", baseUrl, 18761));
+        targets.add(new Target("config-service", baseUrl, 19999));
+        targets.add(new Target("gateway-service", baseUrl, 18888));
+        targets.add(new Target("customer-service", baseUrl, 18081));
+        targets.add(new Target("inventory-service", baseUrl, 18082));
+        targets.add(new Target("billing-service", baseUrl, 18083));
+        targets.add(new Target("order-service", baseUrl, 18084));
+        targets.add(new Target("ledger-service", baseUrl, 18085));
     }
 
     @Scheduled(fixedRateString = "${ledger.health-check.interval-ms:300000}", initialDelayString = "${ledger.health-check.initial-delay-ms:30000}")

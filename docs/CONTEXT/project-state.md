@@ -107,11 +107,27 @@ version change, without an ADR. Schema is owned by Flyway in `ledger-service`;
 | **Live event streaming + archived transactions + observability** | merge `ae59999` | Done, inherited from `feature/live-event-stream` |
 | **Time-travel ledger queries + projection rebuild consistency check** | merge `ae59999` | Done, inherited from `feature/time-travel-ledger` |
 | **Transactional Outbox implemented** — V4 schema, ArchiveStep seam, OutboxPublisher, Admin API, and Angular UI. Verified end-to-end (Pending -> Published). | `0a73ec9` | Done |
+| **Observability and resilience layer** — `specs/005-observability-resilience.md`. Actuator + Prometheus on a separate management port, Kafka consumer-lag health indicator (custom `LAGGING` status), Kubernetes liveness/readiness probes, Resilience4j circuit breaker / retry / bulkhead on the two real fan-outs, gateway health + circuit-breaker aggregator, and an Angular System Health page with a provisioned Grafana dashboard | this commit | Done |
 
 ## 5. Active Context
 
-**Project Status: complete for the delivered features.** Three specs are
-implemented, verified and merged to `main`; there are no open items.
+**Project Status: complete for the delivered features.** Four specs are
+implemented, verified against the live stack, and merged; there are no open
+items.
+
+**The observability layer is verified by observation, not by argument.** All
+eight services were confirmed `up` in Prometheus **on their management ports**
+(`18081`–`18085`, `18761`, `18888`, `19999`), which is the end-to-end proof that
+both the port offset and the `eureka.instance.metadata-map[management.port]`
+binding work. Grafana serves the provisioned `ecom-bank-overview` dashboard with
+anonymous Viewer access and no `X-Frame-Options`, so the embedded `<iframe>`
+renders. `npm run build` and `mvn -o -B -DskipTests package` both pass.
+
+One deliberate cosmetic exception: the "5xx responses" panel carries
+`or vector(0)`, so it draws a flat zero instead of "No data". That trades a
+truthful empty state for a demo that does not look broken — a zero line is
+identical whether the error rate is genuinely zero or the metric stopped being
+scraped, which is why the `up` panel sits beside it.
 
 | Spec | State | Evidence |
 |---|---|---|

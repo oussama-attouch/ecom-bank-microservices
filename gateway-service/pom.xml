@@ -29,11 +29,38 @@
     <properties>
         <java.version>21</java.version>
         <spring-cloud.version>2023.0.3</spring-cloud.version>
+        <!-- Not managed by spring-boot-dependencies; pinned in one place and
+             imported below. Resilience4j 2.2.0 is the current 2.x line for
+             Boot 3.3. -->
+        <resilience4j.version>2.2.0</resilience4j.version>
     </properties>
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!-- /actuator/prometheus. No <version>: spring-boot-dependencies manages
+             Micrometer (1.13.6 for Boot 3.3.5), so the registry cannot drift from
+             the micrometer-core the actuator already pulls in. Presence of this
+             artifact is what makes the endpoint exist — without it "prometheus"
+             in the exposure list silently 404s. -->
+        <!-- Resilience4j (specs/005-observability-resilience.md, step 3).
+             Present for the reactive operators and the registry, NOT for the
+             annotations: KeycloakAdminClient returns Mono, the aspects decorate
+             the method invocation, and a Mono returns before any response
+             arrives — so @CircuitBreaker there would be decorative. See the spec
+             section for what the gateway needs instead. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.cloud</groupId>
@@ -64,6 +91,13 @@
                 <groupId>org.springframework.cloud</groupId>
                 <artifactId>spring-cloud-dependencies</artifactId>
                 <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.github.resilience4j</groupId>
+                <artifactId>resilience4j-bom</artifactId>
+                <version>${resilience4j.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

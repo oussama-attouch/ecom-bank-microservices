@@ -1,0 +1,76 @@
+# Prometheus scrape configuration for the whole E-Com Bank stack.
+#
+# specs/005-observability-resilience.md, step 1. Every service exposes
+# Micrometer's Prometheus registry at /actuator/prometheus; this file is the only
+# place that knows where they are.
+#
+# IMPORTANT — these targets are host addresses, not container names. The eight
+# Spring Boot services run on the host (`mvn spring-boot:run`, or the jar), while
+# Prometheus runs in the compose network, so it reaches them through
+# `host.docker.internal`. docker-compose.yml gives that name a `host-gateway`
+# mapping so the same file works on Linux as well as Docker Desktop.
+#
+# In Kubernetes this whole block is replaced by discovery, not edited by hand:
+#   - job_name: ecom-bank
+#     kubernetes_sd_configs: [{ role: pod }]
+#     relabel_configs:
+#       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+#         action: keep
+#         regex: "true"
+#       ... plus namespace/pod relabeling and a port from the pod annotation.
+# The application side does not change: /actuator/prometheus stays the contract.
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    stack: ecom-bank
+    environment: local
+
+scrape_configs:
+  # The services. These are the MANAGEMENT ports (app port + 10000 by default —
+  # see management.server.port in each service), not the application ports, since
+  # step 2 moved /actuator/** onto its own listener. Scraping an application port
+  # here returns 404 and every target reads DOWN.
+  #
+  # `application` is set here rather than read from a Micrometer common tag in
+  # each service, and that is deliberate: Prometheus only keeps labels it knows
+  # about at scrape time for targets that are DOWN. A dead service exports
+  # nothing, so `up{application="ledger-service"} == 0` only works if the label is
+  # attached by the scraper. Target labels are the only labels that exist for a
+  # target that is not answering.
+  - job_name: ecom-bank-services
+    metrics_path: /actuator/prometheus
+    scheme: http
+    static_configs:
+      - targets: ["host.docker.internal:18761"]
+        labels:
+          application: discovery-service
+      - targets: ["host.docker.internal:19999"]
+        labels:
+          application: config-service
+      - targets: ["host.docker.internal:18888"]
+        labels:
+          application: gateway-service
+      - targets: ["host.docker.internal:18081"]
+        labels:
+          application: customer-service
+      - targets: ["host.docker.internal:18082"]
+        labels:
+          application: inventory-service
+      - targets: ["host.docker.internal:18083"]
+        labels:
+          application: billing-service
+      - targets: ["host.docker.internal:18084"]
+        labels:
+          application: order-service
+      - targets: ["host.docker.internal:18085"]
+        labels:
+          application: ledger-service
+
+  # Prometheus scraping itself, so the monitoring stack can be seen failing to
+  # monitor the monitoring stack.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

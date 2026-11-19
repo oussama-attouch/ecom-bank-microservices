@@ -1,0 +1,152 @@
+{
+  "uid": "ecom-bank-overview",
+  "title": "E-Com Bank — Overview",
+  "tags": ["ecom-bank", "spring-boot", "kafka"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "editable": false,
+  "time": { "from": "now-30m", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Instances reporting",
+      "description": "Count of service targets whose /actuator/prometheus answered. A number below 8 is a dead or unreachable management port, not a metric problem.",
+      "datasource": { "type": "prometheus", "uid": "ecom-bank-prometheus" },
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(up{job=\"ecom-bank-services\"})",
+          "legendFormat": "up",
+          "instant": true
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 6 },
+              { "color": "green", "value": 8 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Request rate by service",
+      "description": "http.server.requests is emitted as a histogram (percentiles-histogram=true), so both rate and quantiles come from the same series.",
+      "datasource": { "type": "prometheus", "uid": "ecom-bank-prometheus" },
+      "gridPos": { "x": 6, "y": 0, "w": 18, "h": 5 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (application) (rate(http_server_requests_seconds_count{job=\"ecom-bank-services\"}[5m]))",
+          "legendFormat": "{{application}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "p95 latency by service",
+      "description": "histogram_quantile over pooled buckets. A per-JVM client-side percentile could not be aggregated across instances; buckets can.",
+      "datasource": { "type": "prometheus", "uid": "ecom-bank-prometheus" },
+      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, application) (rate(http_server_requests_seconds_bucket{job=\"ecom-bank-services\"}[5m])))",
+          "legendFormat": "{{application}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "fillOpacity": 0 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.5 },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "5xx responses",
+      "description": "The outcome tag is what the circuit breakers in order-service and billing-service are reacting to.",
+      "datasource": { "type": "prometheus", "uid": "ecom-bank-prometheus" },
+      "gridPos": { "x": 12, "y": 5, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (application) (rate(http_server_requests_seconds_count{status=~\"5..\"}[5m])) or vector(0)",
+          "legendFormat": "{{application}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } }, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "JVM heap used",
+      "description": "JVM metrics need no configuration: JvmMetricsAutoConfiguration binds them to the registry on the classpath.",
+      "datasource": { "type": "prometheus", "uid": "ecom-bank-prometheus" },
+      "gridPos": { "x": 0, "y": 13, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (application) (jvm_memory_used_bytes{area=\"heap\"})",
+          "legendFormat": "{{application}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }, "overrides": [] }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Kafka consumer group lag",
+      "description": "kafka.consumer.group.lag is the billing-service health indicator's own sample, republished as a gauge so a backlog alerts without depending on the health endpoint. billing-service-dlt sits at 0 by definition: anything there is a poison message an operator must read.",
+      "datasource": { "type": "prometheus", "uid": "ecom-bank-prometheus" },
+      "gridPos": { "x": 12, "y": 13, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (group) (kafka_consumer_group_lag{job=\"ecom-bank-services\"})",
+          "legendFormat": "{{group}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 10 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 500 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    }
+  ]
+}

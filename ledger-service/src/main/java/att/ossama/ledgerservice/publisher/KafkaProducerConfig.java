@@ -1,5 +1,6 @@
 package att.ossama.ledgerservice.publisher;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -8,6 +9,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.core.MicrometerProducerListener;
 import org.springframework.kafka.core.ProducerFactory;
 
 import java.util.HashMap;
@@ -20,8 +22,15 @@ public class KafkaProducerConfig {
     @Value("${ledger.kafka.bootstrap-servers:localhost:9092}")
     private String bootstrapServers;
 
+    /**
+     * Boot's {@code KafkaMetricsAutoConfiguration} only customises the factories
+     * {@code KafkaAutoConfiguration} builds; this one is hand-built, so its
+     * {@code kafka.producer.*} meters would not exist without the listener
+     * attached below. Only active under {@code ledger.publisher=kafka}, which is
+     * also the only configuration in which the saga publishes through it.
+     */
     @Bean
-    public ProducerFactory<String, String> producerFactory() {
+    public ProducerFactory<String, String> producerFactory(MeterRegistry meterRegistry) {
         Map<String, Object> props = new HashMap<>();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
@@ -36,7 +45,9 @@ public class KafkaProducerConfig {
         props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, 8000);
         props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, 10000);
         props.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, 10000);
-        return new DefaultKafkaProducerFactory<>(props);
+        DefaultKafkaProducerFactory<String, String> factory = new DefaultKafkaProducerFactory<>(props);
+        factory.addListener(new MicrometerProducerListener<>(meterRegistry));
+        return factory;
     }
 
     @Bean

@@ -1,13 +1,14 @@
 package att.ossama.billingservice.kafka;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
-import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
+import org.springframework.kafka.core.MicrometerConsumerListener;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.util.backoff.FixedBackOff;
@@ -36,7 +37,7 @@ public class DltKafkaConsumerConfig {
     private String dltGroupId;
 
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, String> dltListenerContainerFactory() {
+    public ConcurrentKafkaListenerContainerFactory<String, String> dltListenerContainerFactory(MeterRegistry meterRegistry) {
         // Built inline rather than as a @Bean on purpose: a second
         // ConsumerFactory bean would make the main kafkaListenerContainerFactory's
         // ConsumerFactory injection ambiguous and break the context.
@@ -51,7 +52,13 @@ public class DltKafkaConsumerConfig {
         props.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_committed");
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        ConsumerFactory<String, String> dltConsumerFactory = new DefaultKafkaConsumerFactory<>(props);
+        DefaultKafkaConsumerFactory<String, String> dltConsumerFactory = new DefaultKafkaConsumerFactory<>(props);
+        // Metrics for the DLT group specifically. Without this the poison-message
+        // consumer is the one part of the stack with no throughput or error
+        // numbers at all — and it is the part an operator asks about. Attaching
+        // the listener does not touch the error handler below: no recoverer, no
+        // retry budget, no republish path.
+        dltConsumerFactory.addListener(new MicrometerConsumerListener<>(meterRegistry));
 
         ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(dltConsumerFactory);
