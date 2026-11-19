@@ -226,7 +226,7 @@ The Transactional Outbox dashboard. The saga writes its `ARCHIVE` step and one `
 
 ### 4.16 System Health — Fleet Health, Circuit Breakers & Grafana
 
-![System Health Dashboard](docs/images/system-health-dashboard.png)
+![System Health Dashboard](docs/screenshots/observability/system-health-dashboard.png)
 
 The single pane of glass, `MANAGER`-only, polling every five seconds. Each card is one **registered instance**, probed on its **management port** rather than the port Eureka advertises — both are shown, because a card that displays `8083` while probing `18083` is how a misrouted health check gets diagnosed as a dead service. Green is `UP`, yellow is `LAGGING`, red is `DOWN`. `LAGGING` is a first-class status, not a shade of `DOWN`: it means the service is behind on its Kafka group but still serving, and it is deliberately mapped to HTTP 200 so a backlog never pulls a pod out of rotation. The middle row lists every Resilience4j circuit breaker in the fleet — the gateway's registry is per-JVM and empty, so the state is collected from `order-service` (`orderEnrichment`) and `billing-service` (`ledgerLiveStream`) — and the `—` under failure rate is "no calls recorded yet", which is different from 0%. The Grafana panel below it is the same data as time series, embedded from a provisioned dashboard.
 
