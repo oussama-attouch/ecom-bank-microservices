@@ -52,6 +52,21 @@ public class KafkaProducerConfig {
 
     @Bean
     public KafkaTemplate<String, String> kafkaTemplate(ProducerFactory<String, String> producerFactory) {
-        return new KafkaTemplate<>(producerFactory);
+        KafkaTemplate<String, String> template = new KafkaTemplate<>(producerFactory);
+        // Observation is what writes the W3C `traceparent` header onto the
+        // record; billing-service's consumer then joins this trace instead of
+        // starting a second one, which is the Gateway → Kafka → billing path this
+        // milestone exists to make traceable. Boot's
+        // spring.kafka.template.observation-enabled only reaches the KafkaTemplate
+        // KafkaAutoConfiguration builds, and this one is hand-built, so the switch
+        // belongs here. KafkaTemplate resolves the ObservationRegistry from the
+        // application context in afterSingletonsInstantiated().
+        //
+        // The outbox relay is a different case and is not covered by this
+        // comment: a row published by OutboxPublisher starts a new root trace,
+        // because the original request's trace context is not persisted in
+        // outbox_events. See specs/006-distributed-tracing-log-aggregation.md.
+        template.setObservationEnabled(true);
+        return template;
     }
 }

@@ -68,12 +68,39 @@ services:
       - kafka
 
   # ---------------------------------------------------------------------------
-  # Observability — specs/005-observability-resilience.md, step 1
+  # Observability — specs/005-observability-resilience.md and
+  #                  specs/006-distributed-tracing-log-aggregation.md
   # ---------------------------------------------------------------------------
-  # These two are the only services here that are not part of the application.
-  # The eight Spring Boot services run on the host (the jars, or
-  # `mvn spring-boot:run`), and Prometheus reaches them through
-  # host.docker.internal — see monitoring/prometheus/prometheus.yml.
+  # None of these is part of the application: they are infrastructure the
+  # operator runs, and they are here rather than in a separate compose file
+  # because the demo is "one command, whole stack".
+  #
+  # TOPOLOGY THIS FILE ASSUMES, because two of these services depend on it:
+  # the eight Spring Boot services run on the HOST (the jars, or
+  # `mvn spring-boot:run`), while Prometheus and Promtail run in the compose
+  # network. That is why the scrape targets use host.docker.internal (see
+  # monitoring/prometheus/prometheus.yml) and why Promtail reads
+  # ./logs — the services' file appender — instead of expecting their output in
+  # the Docker API. The container names below are resolvable to each other
+  # (grafana -> loki, promtail -> loki) and are NOT resolvable from the host.
+  zipkin:
+    # Trace store and UI. Every service exports to it over HTTP at
+    # http://localhost:9411/api/v2/spans — see
+    # management.zipkin.tracing.endpoint in the service properties.
+    image: openzipkin/zipkin:3.4.2
+    container_name: zipkin
+    ports:
+      - "9411:9411"
+    environment:
+      # In-memory storage: no schema, no dependency, nothing to provision. It is
+      # also not durable — the trace list is empty after a restart, and memory
+      # is the retention limit (Zipkin holds roughly 500k spans). A production
+      # deployment points Zipkin at Elasticsearch or moves to Tempo; for a demo
+      # that is restarted and re-driven, this is the right trade.
+      STORAGE_TYPE: mem
+      JAVA_OPTS: "-Xms64m -Xmx256m"
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v2.54.1
     container_name: prometheus
@@ -111,6 +138,7 @@ services:
       - "3000:3000"
     depends_on:
       - prometheus
+      - loki
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       # DEV ONLY default, overridable from the environment. The fallback is
@@ -159,3 +187,60 @@ services:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     restart: unless-stopped
+
+  loki:
+    # Log store. Promtail pushes to it, Grafana queries it on 3100. The config is
+    # mounted rather than passed as flags because it is long enough to read, and
+    # a schema/retention change is a reviewable diff instead of a command line.
+    image: grafana/loki:3.2.1
+    container_name: loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      # A named volume, not the container's writable layer: chunks and the TSDB
+      # index have to survive `docker-compose down`/`up`, or the history an
+      # operator needs to read after a restart is exactly the history that was
+      # thrown away. `docker-compose down -v` deletes it on purpose.
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+
+  promtail:
+    # The shipper. No application process talks to it: it discovers log sources
+    # and pushes them to Loki, adding the labels that make `{service="..."}`
+    # selectable.
+    image: grafana/promtail:3.2.1
+    container_name: promtail
+    depends_on:
+      - loki
+    ports:
+      # /targets on 9080 is the debugging surface: it answers which files and
+      # containers are being tailed and how far each read got. Without the port
+      # published, "no logs in Loki" is unanswerable from the host.
+      - "9080:9080"
+    volumes:
+      - ./monitoring/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      # THE HOST-RUN SERVICES. Their stdout is a console on the host, not a
+      # Docker log, so the Docker API cannot see it. Each service writes
+      # logs/<service>.log through logging.file.name, and this mount is how those
+      # files reach Promtail. Start the services from the repo root (or set
+      # LOG_DIR to this directory) so `logs/` resolves here; otherwise Promtail
+      # tails an empty directory and Loki is legitimately empty.
+      - ./logs:/var/log/ecom-bank:ro
+      # Container logs for the infrastructure (Kafka, Keycloak, Grafana, Loki...).
+      # Read access to the Docker socket is root-equivalent on the host, so this
+      # is a developer-machine arrangement. In production Promtail runs as a
+      # DaemonSet with /var/log/pods mounted, or the applications log to stdout
+      # and the platform shipper collects it; neither needs the socket.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Read positions survive a Promtail restart. Without it, a restart re-reads
+      # every file from the beginning and Loki receives the same lines twice,
+      # which reads as an application that logged twice.
+      - promtail-positions:/positions
+    command: -config.file=/etc/promtail/config.yml
+    restart: unless-stopped
+
+volumes:
+  loki-data:
+  promtail-positions:

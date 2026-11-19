@@ -1,0 +1,75 @@
+# Loki configuration — specs/006-distributed-tracing-log-aggregation.md.
+#
+# Single-binary mode: one process stores chunks on the filesystem and serves
+# queries and pushes on 3100. That is the right shape for a demo and for a
+# developer machine; it is NOT a clustered deployment (no replication, no object
+# store, one ring member). The three settings that matter here are called out
+# below because each one is a silent failure when it is missing.
+
+# No multi-tenancy. With auth off Loki uses the "fake" tenant and Grafana needs
+# no credentials; turning it on without adding a tenant header would make every
+# push a 401 that Promtail logs once and then retries forever.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: info
+  # Deliberately NOT exposed outside the compose network: 3100 is published for
+  # `curl` verification from the host, but the push path is unauthenticated with
+  # auth off, so a real deployment puts it behind a network policy or a gateway.
+
+common:
+  # The instance address is only used by the ring and by service discovery. With
+  # a single instance and an in-memory ring it never leaves this process, but
+  # Loki warns without it and a future split into read/write targets needs it.
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  # 1, not 3: there is one instance. Claiming 3 here does not create replicas,
+  # it makes writes wait for two members that do not exist.
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+# TSDB + schema v13 (Loki 3.x). `from` is in the past on purpose: a schema entry
+# dated in the future is ignored and Loki refuses to index today's samples.
+# `period: 24h` is the index table granularity, not retention.
+schema_config:
+  configs:
+    - from: 2024-04-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  # Seven days. Retention is enforced by the compactor below; without the
+  # compactor the number would be documented and ignored.
+  retention_period: 168h
+  # Reject samples older than a week so a clock-skewed host cannot write into a
+  # period whose index was already compacted away.
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  # Protects the query path from a `{job=~".+"}` scan over a week of lines. The
+  # demo has eight services; 5000 series is already far above what it uses.
+  max_query_series: 5000
+
+compactor:
+  working_directory: /loki/compactor
+  # Both lines are required for retention in Loki 3.x: retention_enabled turns
+  # the compactor into a deleter, and delete_request_store tells it where the
+  # tombstones live. Missing the second one fails startup, which is preferable
+  # to silently keeping everything.
+  retention_enabled: true
+  delete_request_store: filesystem
+
+analytics:
+  # No phone-home. Default true in the image, and this is a local demo.
+  reporting_enabled: false

@@ -1,0 +1,136 @@
+# Promtail configuration — specs/006-distributed-tracing-log-aggregation.md.
+#
+# Two sources, because this stack has two kinds of log:
+#
+#   1. ecom-bank — the eight Spring Boot JVMs run on the HOST. Their
+#      output is a console, not a Docker log, so the Docker API cannot see it.
+#      Each service writes logs/<service>.log (logging.file.name) and the file
+#      is bind-mounted here. This is the source that matters for tracing: the
+#      traceId on a line is what makes it findable.
+#   2. docker — the infrastructure containers (Kafka, Keycloak, Grafana, ...)
+#      discovered through the Docker socket.
+#
+# No regex pipeline stage parses the application lines, deliberately. A `regex`
+# stage drops any line it does not match, and stack-trace lines do not match the
+# application pattern — the one case where losing lines costs the most. Labels
+# that are cheap and stable come from the file name; the traceId stays in the
+# line, where Grafana's derived field and LogQL `|=` can find it without turning
+# every trace into an index label (a cardinality explosion Loki will not
+# survive).
+
+server:
+  http_listen_port: 9080
+  # No gRPC listener is needed: Promtail only serves /metrics and /targets.
+  grpc_listen_port: 0
+  log_level: info
+
+# Read positions, so a restart resumes instead of re-reading every file. The
+# path is a named volume in docker-compose; without that it would live in the
+# container and every restart would duplicate lines in Loki.
+positions:
+  filename: /positions/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # The eight host-run services, one static config each.
+  #
+  # Why eight entries instead of one glob plus a relabel: Promtail relabels the
+  # *target*, and a target's __path__ is still the wildcard
+  # (/var/log/ecom-bank/*.log) at that point. A regex over it extracts "*", not
+  # the file name — measured, not guessed: it produced service="*". Listing the
+  # paths is longer and completely deterministic, and the `service` label is now
+  # fixed per file rather than guessed.
+  - job_name: ecom-bank
+    static_configs:
+      - targets: [localhost]
+        labels:
+          service: discovery-service
+          source: file
+          __path__: /var/log/ecom-bank/discovery-service*.log
+      - targets: [localhost]
+        labels:
+          service: config-service
+          source: file
+          __path__: /var/log/ecom-bank/config-service*.log
+      - targets: [localhost]
+        labels:
+          service: gateway-service
+          source: file
+          __path__: /var/log/ecom-bank/gateway-service*.log
+      - targets: [localhost]
+        labels:
+          service: customer-service
+          source: file
+          __path__: /var/log/ecom-bank/customer-service*.log
+      - targets: [localhost]
+        labels:
+          service: inventory-service
+          source: file
+          __path__: /var/log/ecom-bank/inventory-service*.log
+      - targets: [localhost]
+        labels:
+          service: billing-service
+          source: file
+          __path__: /var/log/ecom-bank/billing-service*.log
+      - targets: [localhost]
+        labels:
+          service: order-service
+          source: file
+          __path__: /var/log/ecom-bank/order-service*.log
+      - targets: [localhost]
+        labels:
+          service: ledger-service
+          source: file
+          __path__: /var/log/ecom-bank/ledger-service*.log
+
+  # Infrastructure containers. Read-only socket; see docker-compose.yml for why
+  # this is a developer-machine arrangement and not a production one.
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 10s
+    # Docker's json-file driver wraps every line in an envelope; this stage
+    # unwraps it, takes the timestamp from the envelope rather than from the read,
+    # and reassembles lines that a container split (partial-line handling). Without
+    # it the store receives JSON strings and the wrong timestamps.
+    pipeline_stages:
+      - docker: {}
+    relabel_configs:
+      # `/name` from the Docker API -> `name`, which is what `docker ps` shows.
+      - source_labels: [__meta_docker_container_name]
+        regex: '/(.*)'
+        target_label: container
+        action: replace
+      # stdout vs stderr, so a warning filter does not also hide the stack trace
+      # context that shares its stream.
+      - source_labels: [__meta_docker_container_log_stream]
+        target_label: stream
+        action: replace
+      # Compose service name when the container was started by compose (all of
+      # the infrastructure is). A file stream is distinguishable from a Docker
+      # stream by `source="file"` versus the `container`/`stream` labels, not by
+      # a `job` label: Promtail does not add one to these targets.
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        regex: '(.+)'
+        target_label: service
+        action: replace
+      # Do not ship Promtail's own log through Promtail: every batch it pushes
+      # would produce a line it reads and pushes again, forever. Dropping the
+      # target is cheaper than filtering the lines after they are read.
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        regex: promtail
+        action: drop
+      # Kafka's containers keep months of broker log, and a Docker-SD target with
+      # no positions entry starts at offset 0 — so the first Promtail start on a
+      # machine that has been running Kafka for weeks reads the whole history.
+      # Loki's reject_old_samples then refuses it, and the "timestamp too old"
+      # errors repeat for every batch. The broker's log stays available through
+      # `docker logs kafka`, and application↔Kafka behaviour is read from the
+      # trace and the consumer's own log, not from the broker's. Keycloak,
+      # Grafana and Loki itself are still collected: those are the containers
+      # whose failures explain an inability to sign in or an empty dashboard.
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        regex: 'kafka|zookeeper|kafdrop'
+        action: drop

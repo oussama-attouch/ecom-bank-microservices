@@ -63,6 +63,15 @@ public class DltKafkaConsumerConfig {
         ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(dltConsumerFactory);
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL);
+        // The DLT listener gets the same observation as the archive listener.
+        // The record it reads was republished by DeadLetterPublishingRecoverer
+        // from inside the failed consume, so its headers still carry that
+        // consume's trace context: this container joins the original trace and
+        // the poison message stays correlated with the request that produced it,
+        // rather than becoming an orphan log line. Boot's configurer would have
+        // set this for a factory it built; this one is hand-built, so it is set
+        // here (same reason as KafkaConsumerConfig).
+        factory.getContainerProperties().setObservationEnabled(true);
 
         // Zero retries, and structurally no recoverer. A recoverer is the only
         // component that appends ".DLT" to a topic name, so passing none here is

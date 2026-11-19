@@ -1,0 +1,48 @@
+# Grafana datasource provisioning — specs/006-distributed-tracing-log-aggregation.md.
+#
+# Provisioned for the same reason as prometheus.yml: a datasource added through
+# the UI lives in Grafana's SQLite volume, so a fresh `docker-compose up` starts
+# with an empty Grafana and the "datasource is green" check has to be repeated by
+# hand every time.
+#
+# `docker-compose` mounts this directory read-only, and Grafana scans every file
+# in it, so this file and prometheus.yml are two independent provisioning
+# documents rather than one merged list.
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    # Pinned so a saved query or a dashboard can reference the datasource by an
+    # id that cannot change when someone renames it in the UI.
+    uid: ecom-bank-loki
+    type: loki
+    access: proxy
+    # Container-to-container name, not localhost: Grafana queries Loki inside the
+    # compose network. localhost here would be Grafana itself and every query
+    # would fail with a connection refused.
+    url: http://loki:3100
+    # Prometheus stays the default: the overview dashboard is metric-first and
+    # most panels on it have no datasource set, so they follow the default.
+    isDefault: false
+    editable: false
+    jsonData:
+      # One extra zero on a query is easier to diagnose than a browser that has
+      # to render a 10 MB response, and the trace filter is what should narrow a
+      # result, not a lower limit.
+      maxLines: 2000
+      # Derived fields turn the traceId in a log line into a link. The pattern
+      # matches the `[traceId,spanId]` field the logging pattern writes; a named
+      # capture group is required because RE2 (which Grafana uses) has no
+      # lookbehind, so the brackets have to be consumed by the match.
+      #
+      # The URL points at the Zipkin container from the BROWSER's point of view,
+      # which is why it is localhost:9411 and not zipkin:9411: Grafana renders
+      # the link, the user's browser follows it, and only the browser is on the
+      # host network. ${__value.traceid} is the named group above. `$$` escapes
+      # the `$` from Grafana's own environment-variable interpolation in
+      # provisioning files.
+      derivedFields:
+        - name: TraceID
+          matcherRegex: '\[(?P<traceid>[a-f0-9]{16}|[a-f0-9]{32}),(?P<spanid>[a-f0-9]{16})\]'
+          url: 'http://localhost:9411/zipkin/traces/$${__value.traceid}'
+          urlDisplayLabel: 'View trace in Zipkin'

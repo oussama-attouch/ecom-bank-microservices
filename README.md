@@ -244,7 +244,7 @@ The single pane of glass, `MANAGER`-only, polling every five seconds. Each card 
 | **Ledger** | Event-sourced — the only service with Postgres; other contexts use in-memory H2 |
 | **Kafka** | Opt-in transport — `ledger.publisher=http` by default; switch to `kafka` for exactly-once archival |
 | **Security** | Three-layer RBAC — frontend UX → gateway trust boundary → backend authorization |
-| **Observability** | Micrometer → Prometheus → Grafana across all 8 services, on a separate management port; `/actuator/prometheus`, Kubernetes liveness/readiness probes, a Kafka consumer-lag health indicator, and a `MANAGER`-only System Health page that aggregates every instance and circuit breaker. Plus the live WebSocket stream and archived-transaction views |
+| **Observability** | Micrometer → Prometheus → Grafana across all 8 services, on a separate management port; `/actuator/prometheus`, Kubernetes liveness/readiness probes, a Kafka consumer-lag health indicator, and a `MANAGER`-only System Health page that aggregates every instance and circuit breaker. Plus **distributed tracing** (Micrometer + OpenTelemetry → Zipkin) with trace IDs on every log line, and **centralized logs** in Loki via Promtail with a log-to-trace link in Grafana. Also the live WebSocket stream and archived-transaction views |
 
 ---
 
@@ -293,6 +293,9 @@ The single pane of glass, `MANAGER`-only, polling every five seconds. Each card 
 | Feature | Detail |
 |---|---|
 | 📊 **Prometheus metrics** | `micrometer-registry-prometheus` in all 8 services, scraped every 15 s. Actuator exposure is a hand-written allow-list, never `*`: `heapdump` (whole-heap, so a credential-extraction primitive), `loggers` (a POST sets any level), `env` and `configprops` are excluded everywhere, including in both `config-repo` overrides that were publishing them |
+| 🔗 **Distributed tracing** | `micrometer-tracing-bridge-otel` + the Zipkin exporter in all 8 services, 100% sampling for the demo. W3C `traceparent` travels gateway → Feign → Kafka, so one request is one trace in Zipkin. Kafka is the hop that needed code: the three hand-built factories bypass Boot's observation switch, so `billing-service` and `ledger-service` enable it on the `ContainerProperties` / `KafkaTemplate` directly. The DLT republish stays in the failed consume's trace |
+| 📜 **Log correlation (MDC)** | One pattern in all 8 services: `%d … [%thread] %-5level [%X{traceId:-},%X{spanId:-}] %logger - %msg`. The OTel `Slf4JEventListener` fills the MDC from the active span, so no code passes IDs around. Outside a trace the field renders `[,]`, not `[null,null]` |
+| 🗄️ **Centralized logs** | Promtail tails `logs/<service>.log` (the eight JVMs run on the host) and the infrastructure containers through the Docker socket; Loki keeps 7 days on a filesystem TSDB. Grafana's provisioned Loki datasource turns the traceId in a line into a **"View trace in Zipkin"** link |
 | 📈 **Grafana dashboards** | Provisioned from JSON (`monitoring/grafana/dashboards/ecom-bank-overview.json`), so a fresh `docker-compose up` starts with the dashboard already there. Panels: instances up, request rate, **p95 from pooled histogram buckets** (a per-JVM percentile cannot be aggregated across instances), 5xx rate, JVM heap, and Kafka consumer-group lag. Embedded in the app via `iframe` behind `allow_embedding` + anonymous `Viewer` |
 | 🔌 **Resilience4j circuit breakers** | `orderEnrichment` in `order-service` (50% failure rate over a 10-call window, 10 s open, 3 half-open probes) and `ledgerLiveStream` in `billing-service`. Retry uses a **positive** exception list, so a 4xx never retries — on the Feign path that type is `FeignException.FeignClientException`, not `HttpClientErrorException`. Degraded reads answer a typed `503 ApiError`, never a 500 stack trace |
 | 🚦 **Kubernetes probes** | `/actuator/health/liveness` is `livenessState,ping` **only** — a failing database must never restart a healthy JVM. `/actuator/health/readiness` includes `db` (and `kafkaLag` in `billing-service`), so traffic stops while the pod is killed and restarted. A `startupProbe` gives Flyway and Hibernate 60 s before liveness is allowed to judge |
@@ -312,7 +315,7 @@ The single pane of glass, `MANAGER`-only, polling every five seconds. Each card 
 | **Security** | Keycloak 26 · OIDC Authorization Code + PKCE · JWT |
 | **Frontend** | Angular 19 · PrimeNG 19 · Chart.js · TypeScript 5.6 |
 | **Infrastructure** | Docker Compose · Eureka · Spring Cloud Config |
-| **Observability** | Spring Actuator · Micrometer · STOMP WebSocket · Custom SLA metrics service |
+| **Observability** | Spring Actuator · Micrometer · Micrometer Tracing (OpenTelemetry) · Zipkin · Prometheus · Grafana · Loki · Promtail · STOMP WebSocket · Custom SLA metrics service |
 
 ---
 
@@ -410,7 +413,12 @@ docker-compose up -d
 | Zookeeper | 2181 | Kafka coordination |
 | Kafdrop | 9000 | Kafka UI |
 | Keycloak | 8180 | Identity provider |
-| Postgres | 5433 | Ledger database |
+| Prometheus | 9090 | Metrics store |
+| Grafana | 3000 | Dashboards — Prometheus + Loki datasources |
+| Zipkin | 9411 | Distributed-trace store and UI |
+| Loki | 3100 | Log store |
+| Promtail | 9080 | Log shipper; `/targets` shows what is tailed |
+| Postgres | 5433 | Ledger database — a separate dev container in this environment, not defined in `docker-compose.yml` |
 
 ### 10.3 Build and Start the 8 Services
 
@@ -431,6 +439,11 @@ mvn clean install -DskipTests
 | 7 | `ledger-service` | 8085 | Needs Postgres |
 | 8 | `gateway-service` | 8888 | Must start last |
 
+All eight services write `logs/<service>.log`, and Docker mounts `<repo>/logs`
+into Promtail. Start them from the repository root (or set `LOG_DIR` to that
+directory), otherwise the files land where Promtail cannot see them and Loki
+stays legitimately empty.
+
 **Or use the restart helper:**
 
 ```bash
@@ -448,6 +461,19 @@ npm start
 ### 10.5 Open the App
 
 **http://localhost:4200** — sign in with one of the credentials below.
+
+### 10.6 Traces and Logs
+
+| Tool | URL | What it answers |
+|---|---|---|
+| **Zipkin** | http://localhost:9411 | "Show me every hop of this request." Search by service, then open a trace |
+| **Grafana → Explore** | http://localhost:3000/explore | "What did `ledger-service` log?" Pick the provisioned **Loki** datasource and query `{service="ledger-service"}` |
+| **Promtail** | http://localhost:9080/targets | "Which files/containers is Promtail actually tailing, and how far did it read?" |
+
+A log line and a trace are linked: every line carries `[traceId,spanId]`, and
+Grafana renders the traceId as a **View trace in Zipkin** link. The full
+verification commands, including the Kafka and DLT cases, are in
+[`specs/006-distributed-tracing-log-aggregation.md`](./specs/006-distributed-tracing-log-aggregation.md).
 
 ---
 
@@ -496,6 +522,9 @@ ecom-app-microservices-main/
 ├── keycloak/                # Realm export (TELLER / MANAGER / AUDITOR)
 ├── config-repo/             # Centralized configs
 ├── scripts/                 # Restart + kill-port helpers
+├── monitoring/              # Prometheus, Grafana provisioning, Loki, Promtail
+├── specs/                   # Feature specs — the design record
+├── logs/                    # Host-run service logs, tailed by Promtail (gitignored)
 ├── docs/
 │   ├── ARCHITECTURE.md      # 8 Mermaid diagrams + decisions
 │   ├── DESIGN-BRIEF.md      # UI design system

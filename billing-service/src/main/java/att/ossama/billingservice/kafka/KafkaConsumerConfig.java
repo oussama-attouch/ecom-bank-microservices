@@ -70,6 +70,14 @@ public class KafkaConsumerConfig {
         ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory);
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL);
+        // Same hole as the factories, one layer up: Boot's
+        // ConcurrentKafkaListenerContainerFactoryConfigurer applies
+        // spring.kafka.listener.observation-enabled to the factory IT builds,
+        // and this one is hand-built, so that property is inert here. Enabling
+        // observation on the ContainerProperties is what makes the container
+        // open a CONSUMER span, extract the W3C trace context from the record
+        // headers, and put its traceId in the MDC for the whole listener call.
+        factory.getContainerProperties().setObservationEnabled(true);
         factory.setCommonErrorHandler(errorHandler);
         return factory;
     }
@@ -89,7 +97,21 @@ public class KafkaConsumerConfig {
 
     @Bean
     public KafkaTemplate<String, String> kafkaTemplate(ProducerFactory<String, String> producerFactory) {
-        return new KafkaTemplate<>(producerFactory);
+        KafkaTemplate<String, String> template = new KafkaTemplate<>(producerFactory);
+        // Observation is what writes the W3C `traceparent` header onto a record.
+        // Without it a consumer has no parent to attach to and starts a brand-new
+        // trace, which is exactly the "async flow is untraceable" problem this
+        // milestone closes. Boot would set this from
+        // spring.kafka.template.observation-enabled only for the template its
+        // KafkaAutoConfiguration builds; this one is hand-built, so the switch is
+        // here. The template resolves the ObservationRegistry itself from the
+        // application context once all singletons are instantiated.
+        //
+        // This template is also the DeadLetterPublishingRecoverer's producer, so
+        // a poison message republished to ledger-events.DLT inherits the trace of
+        // the consume that rejected it — the DLT row and its cause share one id.
+        template.setObservationEnabled(true);
+        return template;
     }
 
     @Bean

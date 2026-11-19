@@ -7,21 +7,22 @@
 ## 1. Current Branch & Status
 
 - **Branch:** `main`
-- **Tip:** `0a73ec9` — `feat(frontend): add outbox observability UI`, the tip of the
-  transactional-outbox merge; this snapshot is the `docs(context): record
-  transactional outbox milestone` commit immediately on top of it.
-- **Remote:** in sync with `origin/main` (nothing unpushed)
+- **Tip:** this commit — `feat(observability): add distributed tracing and
+  centralized log aggregation`
+- **Remote:** the milestone commit is local; push when ready
 - **Working tree:** clean
 
 **What is on `main`:** the workflow scaffolding (`AGENTS.md`,
-`docs/CONTEXT/`, `specs/` templates, `docs/MEMORY.md`) plus three features
+`docs/CONTEXT/`, `specs/` templates, `docs/MEMORY.md`) plus the features
 delivered through it — the `ledger-events.DLT` consumer in `billing-service`,
 **Backoffice access administration** (gateway facade, Keycloak realm client,
-and an Angular page for `MANAGER`), and the **transactional outbox** in
+and an Angular page for `MANAGER`), the **transactional outbox** in
 `ledger-service` (V4 schema, `ArchiveStep` seam, relay, admin API, and an
-Angular page under Observability). The delivering branches were
-`feature/workflow-scaffolding`, `feature/dlt-verification` and
-`feature/transactional-outbox`.
+Angular page under Observability), and the **observability and resilience
+layer** (metrics, probes, circuit breakers, System Health page) with
+**distributed tracing and centralized logs** on top of it. The earlier features
+were delivered on `feature/workflow-scaffolding`, `feature/dlt-verification` and
+`feature/transactional-outbox`; the observability work landed on `main`.
 
 **DLT consumer status: IMPLEMENTED AND VERIFIED END-TO-END** (`86d3036`
 implementation, `55afb4f` verification marker). Poison messages that exhaust the
@@ -107,7 +108,8 @@ version change, without an ADR. Schema is owned by Flyway in `ledger-service`;
 | **Live event streaming + archived transactions + observability** | merge `ae59999` | Done, inherited from `feature/live-event-stream` |
 | **Time-travel ledger queries + projection rebuild consistency check** | merge `ae59999` | Done, inherited from `feature/time-travel-ledger` |
 | **Transactional Outbox implemented** — V4 schema, ArchiveStep seam, OutboxPublisher, Admin API, and Angular UI. Verified end-to-end (Pending -> Published). | `0a73ec9` | Done |
-| **Observability and resilience layer** — `specs/005-observability-resilience.md`. Actuator + Prometheus on a separate management port, Kafka consumer-lag health indicator (custom `LAGGING` status), Kubernetes liveness/readiness probes, Resilience4j circuit breaker / retry / bulkhead on the two real fan-outs, gateway health + circuit-breaker aggregator, and an Angular System Health page with a provisioned Grafana dashboard | this commit | Done |
+| **Observability and resilience layer** — `specs/005-observability-resilience.md`. Actuator + Prometheus on a separate management port, Kafka consumer-lag health indicator (custom `LAGGING` status), Kubernetes liveness/readiness probes, Resilience4j circuit breaker / retry / bulkhead on the two real fan-outs, gateway health + circuit-breaker aggregator, and an Angular System Health page with a provisioned Grafana dashboard | `25cb48e` | Done |
+| **Distributed tracing + centralized logs** — `specs/006-distributed-tracing-log-aggregation.md`. OTel bridge + Zipkin exporter in all 8; W3C `traceparent` across Gateway, Feign and Kafka (including the three hand-built factories and the DLT); `traceId`/`spanId` in every log line; Promtail → Loki with a Grafana log-to-trace link | this commit | Done |
 
 ## 5. Active Context
 
@@ -123,6 +125,19 @@ binding work. Grafana serves the provisioned `ecom-bank-overview` dashboard with
 anonymous Viewer access and no `X-Frame-Options`, so the embedded `<iframe>`
 renders. `npm run build` and `mvn -o -B -DskipTests package` both pass.
 
+**Tracing closes the "which request?" gap, and it is verified the same way.** A
+single `POST /api/transactions` on `ledger-service` produced one Zipkin trace
+with the parentage the design predicts: the ledger HTTP server span, the
+`ledger-events send` producer span beneath it, and `billing-service`'s
+`ledger-events receive` consumer span beneath the producer. The traceId in the
+two services' log lines is identical (`dfc4ced3…`), with each service's own
+spanId, and the billing line is retrievable from Loki with
+`{service="billing-service"} |= "<traceId>"`. A malformed record exercised the
+failure path: four consumer spans (the first attempt plus three retries) under one
+trace, a `ledger-events.DLT` producer span, and the DLT consumer span — so the
+`DLT_CONSUMER:` line that says what was lost carries the id of the request that
+lost it.
+
 One deliberate cosmetic exception: the "5xx responses" panel carries
 `or vector(0)`, so it draws a flat zero instead of "No data". That trades a
 truthful empty state for a demo that does not look broken — a zero line is
@@ -134,6 +149,7 @@ scraped, which is why the `up` panel sits beside it.
 | `specs/001-dlt-consumer.md` | Implemented and verified end-to-end | A live poison message was retried three times, republished to `ledger-events.DLT`, consumed and persisted; the `DLT_CONSUMER:` marker appeared in the billing-service console |
 | `specs/002-backoffice.md` | Implemented and verified | The API was exercised against the live Keycloak — list, role edit, enable/disable, 403 for non-managers, 409 lockout guards — and the page was checked in the browser by the owner |
 | `specs/003-outbox.md` | Implemented, verified end-to-end and merged | The demo ran in the browser: a transfer with Kafka down returned **200** and left the row `PENDING` with `Attempts 0`; after Kafka restarted, **Force Poll** published it and the row read `PUBLISHED` with `Attempts 0`. The relay's abort-on-broker-failure, backoff and in-place parking were exercised against a dead broker, and the API's own 403 plus the gateway's 403 for a teller were both observed |
+| `specs/006-distributed-tracing-log-aggregation.md` | Implemented and verified end-to-end | One `POST /api/transactions` produced a single Zipkin trace with the ledger HTTP span, the `ledger-events send` producer span and billing-service's `ledger-events receive` consumer span; the same traceId appears in both services' log lines and in Loki. A poison record kept the same trace across four consumer attempts, the `ledger-events.DLT` republish and the DLT consumer |
 
 `MANAGER` has a page of its own at `/backoffice/users`, reachable from the
 "Administration → Backoffice" nav item (rendered only for managers) and behind
@@ -188,6 +204,13 @@ Console** (an operator view over `dead_letter_transactions`, which today is a
 database query) and a **Reconciliation service** (checking the event store, the
 journal and `billing-service`'s archive against each other on a schedule). Neither
 has a spec yet.
+
+One tracing follow-up is recorded rather than closed: **an outbox-published
+event starts a new trace at the relay**, because `traceparent` is not persisted in
+`outbox_events`. The direct Kafka path is continuous. Closing it needs a column
+and a Flyway migration, so it belongs to a spec of its own. The same milestone's
+smaller deferrals — OTLP/Tempo, tail sampling, exemplar links, LogQL alerts — are
+listed in `specs/006-distributed-tracing-log-aggregation.md`.
 
 Any further feature still starts the same way: a spec in `specs/` first, then
 the three-step loop in §3.
