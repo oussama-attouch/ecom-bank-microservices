@@ -1,4 +1,7 @@
-import { buildLogQuery, parseLokiResponse } from './log.service';
+import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { LogService, buildLogQuery, parseLokiResponse } from './log.service';
 
 /**
  * The two pieces of this page that are pure logic: the LogQL it sends and the
@@ -134,5 +137,48 @@ describe('Loki response parser', () => {
   it('returns an empty list for an empty or failed response', () => {
     expect(parseLokiResponse(null)).toEqual([]);
     expect(parseLokiResponse({ status: 'success', data: { result: [] } })).toEqual([]);
+  });
+});
+
+/**
+ * The transport regression. `HttpParams`' default codec leaves `=` unencoded,
+ * which makes the URI partially encoded and makes Spring Cloud Gateway
+ * double-encode the LogQL (`%7B` -> `%257B`). Loki then answers 400 with
+ * `unexpected %!(NOVERB)`. The service must send the value fully encoded.
+ */
+describe('LogService request encoding', () => {
+
+  let http: HttpTestingController;
+  let service: LogService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting()]
+    });
+    service = TestBed.inject(LogService);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('encodes the LogQL fully, so no raw "=" reaches the gateway', () => {
+    service.query({ service: 'all', text: '', minutes: 60, limit: 1000 }).subscribe();
+
+    const request = http.expectOne((req) => req.url === '/loki/api/v1/query_range');
+
+    // The value Angular stores is the raw LogQL; the serialized URL is encoded.
+    expect(request.request.params.get('query')).toBe('{service=~".+-service"}');
+    expect(request.request.urlWithParams).toContain(
+      'query=%7Bservice%3D~%22.%2B-service%22%7D'
+    );
+    expect(request.request.urlWithParams).not.toContain('query=%7Bservice=~');
+
+    const start = request.request.params.get('start') ?? '';
+    const end = request.request.params.get('end') ?? '';
+    expect(start).toMatch(/^\d+$/);
+    expect(end).toMatch(/^\d+$/);
+    expect(BigInt(end) > BigInt(start)).toBeTrue();
+
+    request.flush({ status: 'success', data: { resultType: 'streams', result: [] } });
   });
 });

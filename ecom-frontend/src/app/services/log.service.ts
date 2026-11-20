@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpParameterCodec, HttpParams } from '@angular/common/http';
 import { Observable, map } from 'rxjs';
 import { silentWhen } from './http-context.tokens';
 
@@ -65,12 +65,57 @@ export interface LokiResponse {
 }
 
 /**
+ * `HttpParams`' default codec leaves `=`, `/`, `?` and a few other reserved
+ * characters unencoded in a **value**. That is valid URI syntax, but it makes
+ * the request URI "partially encoded", and a partially encoded URI is a real
+ * trap in Spring Cloud Gateway:
+ *
+ *   - `containsEncodedParts()` tests `UriComponentsBuilder.fromUri(uri)
+ *     .build(true)`. With a raw `=` inside the LogQL value it treats the URI as
+ *     *not* fully encoded, returns false, and the route rebuilds it with
+ *     `build(false)`.
+ *   - `build(false)` percent-encodes the already-encoded characters again:
+ *     `%7B` becomes `%257B`. Loki then decodes the parameter once, sees a
+ *     literal `%7Bservice...`, and answers
+ *     `400 parse error at line 1, col 1: syntax error: unexpected %!(NOVERB)`.
+ *
+ * Measured through both the running gateway and a fresh one:
+ *
+ *   query=%7Bservice=~%22.%2B-service%22%7D  -> 400
+ *   query=%7Bservice%3D~%22.%2B-service%22%7D -> 200 (the same LogQL)
+ *
+ * Encoding every value with `encodeURIComponent` makes the URI fully encoded,
+ * so the gateway's `containsEncodedParts()` returns true and the path is
+ * forwarded unchanged. It is also what "not double-encoding" looks like from
+ * this side: the raw LogQL is encoded exactly once, by the client.
+ */
+class StrictHttpParameterCodec implements HttpParameterCodec {
+  encodeKey(key: string): string {
+    return encodeURIComponent(key);
+  }
+
+  encodeValue(value: string): string {
+    return encodeURIComponent(value);
+  }
+
+  decodeKey(key: string): string {
+    return decodeURIComponent(key);
+  }
+
+  decodeValue(value: string): string {
+    return decodeURIComponent(value);
+  }
+}
+
+const STRICT_CODEC = new StrictHttpParameterCodec();
+
+/**
  * Reads Loki through the gateway's read-only route.
  *
- * <p>The URL is `/loki/...`, not `http://localhost:3100/...`: the gateway
- * strips `/loki` and forwards to `LOKI_URL`, so the browser stays same-origin
- * and the MANAGER check lives at the edge. Calling Loki's port from the page
- * would work on this machine and nowhere else.
+ * <p>The URL is `/loki/...`, not `http://localhost:3100/...`: the gateway owns
+ * the route and the MANAGER check, and forwards the path unchanged (Loki serves
+ * its API under `/loki` itself). Calling Loki's port from the page would work on
+ * this machine and nowhere else.
  *
  * <p>Requests are silent for the same reason System Health's polls are: this
  * page renders its own failure banner, and the global toast would fire once per
@@ -86,7 +131,7 @@ export class LogService {
     const minutes = BigInt(Math.max(1, Math.trunc(query.minutes)));
     const start = end - minutes * 60_000_000_000n;
 
-    const params = new HttpParams()
+    const params = new HttpParams({ encoder: STRICT_CODEC })
       .set('query', buildLogQuery(query.service, query.text))
       .set('start', start.toString())
       .set('end', end.toString())

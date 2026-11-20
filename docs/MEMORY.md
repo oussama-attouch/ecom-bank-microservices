@@ -23,3 +23,11 @@
   the path unchanged; `StripPrefix=1` produces Loki's own `404 page not found`.
 - The frontend `npm test` must run from `ecom-frontend` (or with that workdir);
   from the repository root it fails with `Missing script: "test"`.
+- Angular's default `HttpParams` codec leaves `=` unencoded in values. A query
+  value containing a raw `=` (with `%7B...` already encoded) makes Spring Cloud
+  Gateway's `containsEncodedParts()` treat the URI as unencoded and rebuild it
+  with `build(false)`, double-encoding `%7B` to `%257B`; Loki then returns
+  `400 ... unexpected %!(NOVERB)`. Use a strict `HttpParameterCodec`
+  (`encodeURIComponent`) for LogQL query values. Measured: `query=%7Bservice=~...`
+  is 400 through the gateway; `query=%7Bservice%3D~...` is 200, while Loki
+  accepts both directly.
