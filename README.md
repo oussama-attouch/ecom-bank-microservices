@@ -230,6 +230,12 @@ The Transactional Outbox dashboard. The saga writes its `ARCHIVE` step and one `
 
 The single pane of glass, `MANAGER`-only, polling every five seconds. Each card is one **registered instance**, probed on its **management port** rather than the port Eureka advertises — both are shown, because a card that displays `8083` while probing `18083` is how a misrouted health check gets diagnosed as a dead service. Green is `UP`, yellow is `LAGGING`, red is `DOWN`. `LAGGING` is a first-class status, not a shade of `DOWN`: it means the service is behind on its Kafka group but still serving, and it is deliberately mapped to HTTP 200 so a backlog never pulls a pod out of rotation. The middle row lists every Resilience4j circuit breaker in the fleet — the gateway's registry is per-JVM and empty, so the state is collected from `order-service` (`orderEnrichment`) and `billing-service` (`ledgerLiveStream`) — and the `—` under failure rate is "no calls recorded yet", which is different from 0%. The Grafana panel below it is the same data as time series, embedded from a provisioned dashboard.
 
+### 4.17 Log Console — Distributed Tracing & Log Aggregation
+
+![Log Console — Loki, trace correlation and Zipkin](docs/screenshots/observability/logs-console.png)
+
+The `MANAGER`-only log console at `/observability/logs` reads Loki through a **GET-only gateway route**, so the browser never talks to Loki's port. Service, level, window and free-text filters run over the newest 1,000 lines (500 rendered), with 5 s auto-refresh that pauses when the tab is hidden. **Traced only** hides Eureka/Hikari/Kafka background lines — which correctly render `[,]` — leaving request lines whose `[traceId,spanId]` opens the Zipkin timeline; the copy control copies the full 32-character id. In this capture the text filter is pinned to trace `4d96eb52ee44b468d1d9c525560efd2c`: the billing-service Kafka consumer and the ledger-service HTTP publisher both carry it, so the same trace appears on both sides of the Kafka hop. The LogQL preview in the footer shows the exact query the page sent.
+
 ---
 
 ## 5. Architecture
@@ -266,6 +272,8 @@ The single pane of glass, `MANAGER`-only, polling every five seconds. Each card 
 | 🛡️ **Backoffice access administration** | `MANAGER` lists Keycloak users, assigns `TELLER`/`MANAGER`/`AUDITOR`, and enables or disables accounts — with guards that refuse to demote the caller or the last enabled manager |
 | 🚦 **Role-enforcing gateway** | Realm roles become `ROLE_*` authorities; `/backoffice/**` and customer/product **writes** are `MANAGER`-only, while reads stay open to every signed-in operator |
 | 💰 **$10K teller limit** | Enforced at the API, tested with curl |
+| 🔗 **Distributed tracing (Zipkin)** | `micrometer-tracing-bridge-otel` + the Zipkin exporter in all 8 services, 100% sampling for the demo. W3C `traceparent` travels gateway → Feign → Kafka, so one request is one trace in **Zipkin** |
+| 🪵 **Centralized logging (Loki)** | Promtail ships host logs and container logs to **Loki** (7-day retention). The `MANAGER`-only Log Console filters them, turns `traceId` into a Zipkin link, and copies the full id; background threads render `[,]` by design |
 
 ### 6.2 Frontend (Angular 19 / PrimeNG)
 
