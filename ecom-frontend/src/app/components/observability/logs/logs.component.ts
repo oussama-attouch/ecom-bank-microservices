@@ -74,6 +74,10 @@ export class LogsComponent implements OnInit, OnDestroy {
 
   readonly errorCount = computed(() => this.lines().filter((line) => line.level === 'ERROR').length);
   readonly warnCount = computed(() => this.lines().filter((line) => line.level === 'WARN').length);
+  /** Lines that carry a trace context and therefore have a Zipkin target. */
+  readonly tracedCount = computed(() => this.lines().filter((line) => line.traceId !== null).length);
+  /** The traceId copied most recently, for the row's check-mark feedback. */
+  readonly copiedTrace = signal<string | null>(null);
 
   // Form state. Plain fields, not signals: template-driven forms write them and
   // the getters below re-read them on each change-detection pass. Only the
@@ -83,10 +87,17 @@ export class LogsComponent implements OnInit, OnDestroy {
   minutes = 60;
   text = '';
   autoRefresh = true;
+  /**
+   * Hide the background lines. Eureka heartbeats, Hikari housekeepers and Kafka
+   * coordinator threads are not inside a request or a listener observation, so
+   * they legitimately have no traceId. That is expected, not missing tracing.
+   */
+  tracedOnly = false;
 
   private sub?: Subscription;
   private pollTimer?: ReturnType<typeof setInterval>;
   private searchTimer?: ReturnType<typeof setTimeout>;
+  private copyTimer?: ReturnType<typeof setTimeout>;
 
   ngOnInit(): void {
     // roleGuard has already waited for the token's roles, so the first request
@@ -103,21 +114,33 @@ export class LogsComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     if (this.pollTimer) clearInterval(this.pollTimer);
     if (this.searchTimer) clearTimeout(this.searchTimer);
+    if (this.copyTimer) clearTimeout(this.copyTimer);
     this.sub?.unsubscribe();
   }
 
   /**
-   * Lines matching the local level filter, before the display cap.
+   * Lines matching the local filters, before the display cap.
    *
    * RAW lines are kept whatever the level is: they are the stack-trace
    * continuations and banners that carry no level of their own, and dropping
    * them is exactly how an ERROR view loses the stack trace that explains the
    * error. They are also why the level filter is not a LogQL filter.
+   *
+   * `tracedOnly` narrows to lines that have a traceId. RAW lines are excluded
+   * in that mode by definition — they have no trace to open — which is why the
+   * trim below only keeps them when the traced filter is off.
    */
   get levelMatched(): LogLine[] {
     const level = this.level;
-    const lines = this.lines();
-    return level === 'ALL' ? lines : lines.filter((line) => line.level === level || line.raw);
+    let lines = this.lines();
+
+    if (this.tracedOnly) {
+      lines = lines.filter((line) => line.traceId !== null);
+    }
+
+    return level === 'ALL'
+      ? lines
+      : lines.filter((line) => line.level === level || (line.raw && !this.tracedOnly));
   }
 
   /** What the list renders: newest first, capped at 500. */
@@ -188,7 +211,23 @@ export class LogsComponent implements OnInit, OnDestroy {
     this.level = 'ALL';
     this.minutes = 60;
     this.text = '';
+    this.tracedOnly = false;
     this.reload();
+  }
+
+  /** Copy the full id; the chip itself only has room for a prefix. */
+  copyTrace(traceId: string | null): void {
+    if (!traceId || !navigator.clipboard?.writeText) return;
+
+    navigator.clipboard.writeText(traceId)
+      .then(() => {
+        this.copiedTrace.set(traceId);
+        if (this.copyTimer) clearTimeout(this.copyTimer);
+        this.copyTimer = setTimeout(() => this.copiedTrace.set(null), 1500);
+      })
+      .catch(() => {
+        // Clipboard permission denied: the Zipkin link still works.
+      });
   }
 
   traceUrl(traceId: string | null): string {

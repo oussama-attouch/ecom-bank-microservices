@@ -7,7 +7,7 @@
 ## 1. Current Branch & Status
 
 - **Branch:** `main`
-- **Tip:** this commit — `fix(observability): encode LogQL query parameters fully`
+- **Tip:** this commit — `feat(observability): surface traced log lines`
 - **Remote:** the milestone commits are local; push when ready
 - **Working tree:** clean
 
@@ -109,9 +109,10 @@ version change, without an ADR. Schema is owned by Flyway in `ledger-service`;
 | **Time-travel ledger queries + projection rebuild consistency check** | merge `ae59999` | Done, inherited from `feature/time-travel-ledger` |
 | **Transactional Outbox implemented** — V4 schema, ArchiveStep seam, OutboxPublisher, Admin API, and Angular UI. Verified end-to-end (Pending -> Published). | `0a73ec9` | Done |
 | **Observability and resilience layer** — `specs/005-observability-resilience.md`. Actuator + Prometheus on a separate management port, Kafka consumer-lag health indicator (custom `LAGGING` status), Kubernetes liveness/readiness probes, Resilience4j circuit breaker / retry / bulkhead on the two real fan-outs, gateway health + circuit-breaker aggregator, and an Angular System Health page with a provisioned Grafana dashboard | `25cb48e` | Done |
-| **Distributed tracing + centralized logs** — `specs/006-distributed-tracing-log-aggregation.md`. OTel bridge + Zipkin exporter in all 8; W3C `traceparent` across Gateway, Feign and Kafka (including the three hand-built factories and the DLT); `traceId`/`spanId` in every log line; Promtail → Loki with a Grafana log-to-trace link | `2b50e43` | Done |
+| **Distributed tracing + centralized logs** — `specs/006-distributed-tracing-log-aggregation.md`. OTel bridge + Zipkin exporter in all 8; W3C `traceparent` across Gateway, Feign and Kafka (including the three hand-built factories and the DLT); `traceId`/`spanId` in request and listener log lines (background threads legitimately render `[,]`); Promtail → Loki with a Grafana log-to-trace link | `2b50e43` | Done |
 | **Log console** — `specs/007-log-console.md`. `/observability/logs`, MANAGER-only, filters over Loki, traceId → Zipkin links and a LogQL preview; served by a GET-only gateway route so the browser never reaches Loki's port | `40cfb85` | Done |
-| **Log query 400 fix** — strict `HttpParameterCodec` for the LogQL value. Angular's default left `=` raw; the gateway's URI builder then double-encoded `%7B` to `%257B` and Loki answered 400 `unexpected %!(NOVERB)` | this commit | Done |
+| **Log query 400 fix** — strict `HttpParameterCodec` for the LogQL value. Angular's default left `=` raw; the gateway's URI builder then double-encoded `%7B` to `%257B` and Loki answered 400 `unexpected %!(NOVERB)` | `71c849e` | Done |
+| **Trace visibility** — **Traced only** filter, Traced count, full-ID copy and corrected copy; the Log Console no longer claims background threads carry a trace. Live trace `4d96eb52…` spans gateway → ledger HTTP → billing Kafka consumer | this commit | Done |
 
 ## 5. Active Context
 
@@ -147,10 +148,12 @@ same `/loki` prefix). A probe against a gateway built from the new code returned
 **401** with no token, **403** for a teller, **200** for a manager, and **404**
 for `POST /loki/api/v1/push`; the manager query returned Loki's
 `status:"success"` body with a `billing-service` line. The Angular build passes
-and the frontend suite is 127/127, including 10 query/parser tests, 1 transport
-encoding test and 3 component tests. The page filters levels in the browser over
+and the frontend suite is 128/128, including 10 query/parser tests, 1 transport
+encoding test and 4 component tests. The page filters levels in the browser over
 the fetched 1,000 lines, deliberately, so an `ERROR` view keeps the stack trace
-around the error.
+around the error. A **Traced only** filter, a Traced count and a copy control
+make request lines obvious; background threads render `[,]` and are now labelled
+as such rather than presented as missing tracing.
 
 The page's first live run exposed a 400 that the unit tests initially missed:
 the unfiltered LogQL value contains `=`, Angular's default `HttpParams` codec
@@ -161,6 +164,19 @@ fully encoded form. `LogService` now uses a strict `HttpParameterCodec`; the
 regression test asserts `query=%7Bservice%3D~...` in `urlWithParams`. The
 running gateway on 8888 already has the route and returns 200 for the canonical
 URL; no gateway restart is required for this fix.
+
+**Trace visibility is verified, not assumed.** All eight POMs already carry the
+OTel bridge and Zipkin exporter, and Zipkin's `/api/v2/services` lists all eight
+services. The `[,]` lines that prompted the check are background traffic:
+Eureka heartbeats, Hikari housekeepers and Kafka coordinators are outside any
+request or listener observation. A live gateway transaction produced trace
+`4d96eb52ee44b468d1d9c525560efd2c`; the ledger's HTTP-publisher line and a
+billing Kafka-consumer line share it, and Zipkin shows 8 spans for the trace
+(gateway → ledger HTTP → billing `ledger-events receive`). The running ledger
+uses the default `http` publisher; the Kafka record was injected with the
+original HTTP trace to prove the consumer path. The Log Console now has a
+**Traced only** filter, a Traced count and a full-ID copy control, and its copy
+no longer claims background lines have a trace.
 
 One deliberate cosmetic exception: the "5xx responses" panel carries
 `or vector(0)`, so it draws a flat zero instead of "No data". That trades a
@@ -174,7 +190,7 @@ scraped, which is why the `up` panel sits beside it.
 | `specs/002-backoffice.md` | Implemented and verified | The API was exercised against the live Keycloak — list, role edit, enable/disable, 403 for non-managers, 409 lockout guards — and the page was checked in the browser by the owner |
 | `specs/003-outbox.md` | Implemented, verified end-to-end and merged | The demo ran in the browser: a transfer with Kafka down returned **200** and left the row `PENDING` with `Attempts 0`; after Kafka restarted, **Force Poll** published it and the row read `PUBLISHED` with `Attempts 0`. The relay's abort-on-broker-failure, backoff and in-place parking were exercised against a dead broker, and the API's own 403 plus the gateway's 403 for a teller were both observed |
 | `specs/006-distributed-tracing-log-aggregation.md` | Implemented and verified end-to-end | One `POST /api/transactions` produced a single Zipkin trace with the ledger HTTP span, the `ledger-events send` producer span and billing-service's `ledger-events receive` consumer span; the same traceId appears in both services' log lines and in Loki. A poison record kept the same trace across four consumer attempts, the `ledger-events.DLT` republish and the DLT consumer |
-| `specs/007-log-console.md` | Implemented; gateway route/roles and the 400 fix verified live, UI built and unit-tested | A gateway with the new route answered 401 (no token), 403 (teller), 200 (manager) and 404 (POST push) on `/loki/...`. The page's 400 was traced to Angular's raw `=` being double-encoded by the gateway's URI builder; the strict codec sends `query=%7Bservice%3D~...`, which returns 200 through 4200/8888, while the raw form returns 400. `npm run build` passes and the suite is 127/127 (10 query/parser, 1 transport, 3 component tests). The page itself was not opened in a browser here |
+| `specs/007-log-console.md` | Implemented; gateway route/roles, 400 fix and trace visibility verified live; UI built and unit-tested | A gateway with the new route answered 401 (no token), 403 (teller), 200 (manager) and 404 (POST push) on `/loki/...`. The page's 400 was traced to Angular's raw `=` being double-encoded by the gateway's URI builder; the strict codec sends `query=%7Bservice%3D~...`, which returns 200 through 4200/8888, while the raw form returns 400. A live trace (`4d96eb52…`, 8 spans) runs gateway → ledger HTTP → billing Kafka consumer; the billing line carries the same traceId. `npm run build` passes and the suite is 128/128 (10 query/parser, 1 transport, 4 component tests). The page itself was not opened in a browser here |
 
 `MANAGER` has a page of its own at `/backoffice/users`, reachable from the
 "Administration → Backoffice" nav item (rendered only for managers) and behind

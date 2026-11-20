@@ -74,6 +74,22 @@ describe('LogsComponent', () => {
     expect(fixture.nativeElement.querySelectorAll('.log-raw').length).toBe(1);
   });
 
+  it('shows only traced request lines when Traced only is ticked', () => {
+    api.query.and.returnValue(of([
+      line({ id: 'traced', traceId: 'a'.repeat(32), spanId: 'b'.repeat(16) }),
+      line({ id: 'background', logger: 'Eureka', message: 'heartbeat' })
+    ]));
+
+    fixture = TestBed.createComponent(LogsComponent);
+    fixture.componentInstance.tracedOnly = true;
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.tracedCount()).toBe(1);
+    expect(fixture.nativeElement.querySelectorAll('.log-row').length).toBe(1);
+    expect(fixture.nativeElement.querySelector('.trace')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.copy')).not.toBeNull();
+  });
+
   it('shows the MANAGER-only message when the gateway answers 403', () => {
     api.query.and.returnValue(throwError(() => ({ status: 403 })));
 

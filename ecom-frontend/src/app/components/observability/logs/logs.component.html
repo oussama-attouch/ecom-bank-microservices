@@ -2,9 +2,11 @@
   <div class="title-block">
     <h1>Logs</h1>
     <p class="page-sub">
-      Every service's log lines, read from Loki through the gateway. Each line carries the
-      <code>traceId</code> that ties it to a request; the newest 500 of 1,000 fetched lines are
-      shown. Manager-only.
+      Every service's log lines, read from Loki through the gateway. <strong>Request lines</strong>
+      carry the <code>traceId</code> that opens the Zipkin timeline; background threads (Eureka,
+      Hikari, Kafka coordinators) render <code>[,]</code> because they are outside any request or
+      listener scope. Tick <strong>Traced only</strong> to see just the clickable lines. The newest
+      500 of 1,000 fetched lines are shown. Manager-only.
     </p>
   </div>
   <div class="page-meta">
@@ -75,6 +77,11 @@
   </label>
 
   <label class="auto">
+    <input type="checkbox" [(ngModel)]="tracedOnly">
+    <span>Traced only</span>
+  </label>
+
+  <label class="auto">
     <input type="checkbox" [(ngModel)]="autoRefresh">
     <span>Auto 5s</span>
   </label>
@@ -90,8 +97,8 @@
     <span>{{ visibleLines.length }}</span>
   </div>
   <div class="sum">
-    <label title="The newest entries fetched before the level filter">Fetched</label>
-    <span>{{ lines().length }}</span>
+    <label title="Fetched lines that carry a traceId and a Zipkin link">Traced</label>
+    <span class="traced">{{ tracedCount() }}</span>
   </div>
   <div class="sum">
     <label>Errors</label>
@@ -112,8 +119,23 @@
   <div class="empty">
     <i class="pi pi-align-left"></i>
     <div>
-      <strong>{{ lines().length ? 'No fetched line matches this level.' : 'No lines in this window.' }}</strong>
-      @if (lines().length) {
+      <strong>
+        @if (tracedOnly && tracedCount() === 0 && lines().length) {
+          No traced request lines in this window.
+        } @else if (lines().length) {
+          No fetched line matches this level.
+        } @else {
+          No lines in this window.
+        }
+      </strong>
+      @if (tracedOnly && tracedCount() === 0 && lines().length) {
+        <p>
+          The fetched lines are all background traffic. Eureka heartbeats, Hikari housekeepers
+          and Kafka coordinator threads run outside a request or listener observation, so they
+          have no traceId by design. Run a transfer or call an endpoint, then refresh; or untick
+          <em>Traced only</em> to see the background lines.
+        </p>
+      } @else if (lines().length) {
         <p>
           The level filter is applied in the browser over the fetched window. Choose
           <em>All levels</em>, or narrow the window and retry for a fresh set.
@@ -164,13 +186,24 @@
             <span class="logger" [title]="line.logger">{{ line.logger }}</span>
             <span class="msg">{{ line.message }}</span>
             @if (line.traceId) {
-              <a class="trace"
-                 [href]="traceUrl(line.traceId)"
-                 target="_blank"
-                 rel="noopener noreferrer"
-                 [title]="'Open trace ' + line.traceId + ' in Zipkin'">
-                <i class="pi pi-external-link"></i> {{ shortTrace(line.traceId) }}
-              </a>
+              <span class="trace-cell">
+                <a class="trace"
+                   [href]="traceUrl(line.traceId)"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   [title]="'Open trace ' + line.traceId + ' in Zipkin'">
+                  <i class="pi pi-external-link"></i> {{ shortTrace(line.traceId) }}
+                </a>
+                <button type="button"
+                        class="copy"
+                        (click)="copyTrace(line.traceId)"
+                        [title]="'Copy traceId ' + line.traceId"
+                        aria-label="Copy trace ID">
+                  <i class="pi"
+                     [class.pi-copy]="copiedTrace() !== line.traceId"
+                     [class.pi-check]="copiedTrace() === line.traceId"></i>
+                </button>
+              </span>
             } @else {
               <span class="trace-empty" aria-hidden="true"></span>
             }

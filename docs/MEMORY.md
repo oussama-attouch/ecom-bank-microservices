@@ -31,3 +31,9 @@
   (`encodeURIComponent`) for LogQL query values. Measured: `query=%7Bservice=~...`
   is 400 through the gateway; `query=%7Bservice%3D~...` is 200, while Loki
   accepts both directly.
+- Trace IDs exist only inside an HTTP request or a Kafka listener observation.
+  Eureka heartbeats, Hikari housekeepers and Kafka coordinator threads log `[,]`
+  by design; that is not missing tracing. Check `curl localhost:9411/api/v2/services`
+  and a request line before adding tracing dependencies again. A live trace
+  (`4d96eb52ee44b468d1d9c525560efd2c`) carries the same ID from the gateway
+  through the ledger HTTP publisher into billing-service's Kafka consumer log.

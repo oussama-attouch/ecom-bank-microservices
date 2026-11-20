@@ -9,7 +9,7 @@ matching System Health and the Backoffice: the lines name accounts,
 transactions and failures.
 
 **Problem.** `specs/006-distributed-tracing-log-aggregation.md` shipped the
-traceId into every log line and the lines into Loki, but the only reader is
+traceId into request and listener log lines and the lines into Loki, but the only reader is
 Grafana's Explore. That is a second UI with its own URL, its own login and a
 query language. The question the tracing work was meant to answer — *"what did
 `ledger-service` log for this traceId?"* — still means leaving the app and
@@ -141,7 +141,6 @@ pagination. The footer states the cap and the LogQL preview.
 - [x] The LogQL preview is exactly the query sent: `buildLogQuery` is unit-tested
       for single service, all services, escaping and trimming; the transport is
       unit-tested to send a fully encoded `query` value.
-
 ## Bug fix: 400 Bad Request on the unfiltered query (2026-11-20)
 
 **Symptom.** The Logs page requested:
@@ -206,14 +205,14 @@ change than this bug warrants.
 
 **Verification.** See the commands in the final incident report; the key pair
 is direct Loki encoded 200, gateway raw 400, gateway encoded 200, and the dev
-proxy encoded 200. The full frontend suite is 127/127 and the production build
+proxy encoded 200. The full frontend suite is 128/128 and the production build
 passes.
 
 ## Delivered — evidence from this environment
 
 ```powershell
 npm run build                                  # production build succeeds
-npm test -- --watch=false --browsers=ChromeHeadless   # 127/127
+npm test -- --watch=false --browsers=ChromeHeadless   # 128/128
 mvn -o -B -f gateway-service/pom.xml -DskipTests package  # BUILD SUCCESS
 ```
 
@@ -248,6 +247,57 @@ Not run in a browser here: signing in and clicking through `/observability/logs`
 (the user's gateway was intentionally left alone). The component tests cover
 rendering, the trace link, the RAW-preserving level filter and the 403 banner;
 the production build compiles the template with `strictTemplates`.
+
+## Trace visibility (2026-11-20)
+
+The page's first live run showed lines with `[,]` and read as "tracing is
+missing". The audit says it is not: `specs/006` delivered tracing, and it is
+live on this checkout.
+
+**Audit evidence.**
+
+- All 8 POMs contain `micrometer-tracing-bridge-otel` and
+  `opentelemetry-exporter-zipkin`.
+- Zipkin's `/api/v2/services` lists all eight services.
+- The running `ledger-service` classpath contains Micrometer Tracing 1.3.5,
+  OpenTelemetry 1.37.0 and the Zipkin exporter.
+- `ledger-service`'s own log has trace-bearing lines, e.g.
+  `[24364527293a11250834e262e41cf5b0,8683aebd6eafc395] ... all 8 services are UP`.
+- A gateway transaction produced trace
+  `4d96eb52ee44b468d1d9c525560efd2c` in the ledger log; a Kafka record carrying
+  that trace's `traceparent` produced the billing consumer line
+  `[4d96eb52ee44b468d1d9c525560efd2c,1836bbc7815f60fa] ... Archived transaction
+  ... (from Kafka)`. Zipkin has 8 spans for that trace, including the gateway's
+  five, the ledger's HTTP span and billing's `ledger-events receive` span.
+
+**Why the screenshot had no IDs.** Eureka heartbeats, Hikari housekeepers and
+Kafka coordinator threads are **not inside a request or listener observation**,
+so `%X{traceId:-}` is empty by design. No tracing setting can give a background
+thread a request's trace. The page's original subtitle claimed *every* line
+carried the ID, which was wrong; the rows were correct.
+
+**What changed.**
+
+- Subtitle now says **request lines** carry the ID and background threads render
+  `[,]`.
+- A **Traced only** checkbox narrows the fetched window to lines with a
+  `traceId` (RAW lines are excluded in that mode because they have no trace).
+- The summary's second cell is **Traced**, not Fetched; the fetched count stays
+  in the footer.
+- When `Traced only` finds none, the empty state explains that the fetched lines
+  are background traffic and that a request/transfer is needed.
+- Each trace has a **copy** button for the full ID next to the Zipkin link; the
+  chip only shows the first 12 characters.
+- Component test: one traced and one background line with `Traced only` on
+  renders exactly one row, the link and the copy control. Suite: **128/128**.
+
+**Pattern compatibility.** The implemented pattern is
+`... %-5level [%X{traceId:-},%X{spanId:-}] ...`. The suggested
+`logging.pattern.level=%5p [${spring.application.name:-},...]` form is not used:
+the explicit `logging.pattern.console` does not read `LOG_LEVEL_PATTERN`, and
+putting the application name inside the brackets would change the shape the Log
+Console parser and Grafana derived field match. The application is already the
+Loki `service` label on every stream.
 
 ## Constraints
 
