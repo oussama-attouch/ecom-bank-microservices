@@ -52,6 +52,15 @@
     "proxyTimeout": 60000
   },
   "//admin": "The gateway's own /api/admin/** controllers (system health, circuit breakers). These carry no service-id prefix, so none of the entries above match them — without this the dev server answers 404 and the page reads as broken.",
+  "//loki": "Log console (specs/007-log-console.md). The gateway owns the route and the MANAGER check. Loki serves its API under the same /loki prefix, so nothing is rewritten; the browser never calls Loki's port directly.",
+  "/loki": {
+    "target": "http://localhost:8888",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug",
+    "timeout": 60000,
+    "proxyTimeout": 60000
+  },
   "/api": {
     "target": "http://localhost:8888",
     "secure": false,

@@ -94,6 +94,17 @@ public class SecurityConfig {
                 // Not public on purpose: the payload names every instance, its
                 // latency and its failures, which is a topology map of the estate.
                 .pathMatchers("/api/admin/**").hasRole(MANAGER_ROLE)
+                // Log console (specs/007-log-console.md). MANAGER only, and GET
+                // only here as well as in the route predicate: the page reads
+                // Loki's query API through the gateway, so Loki itself can stay
+                // on the compose network with no edge credentials. Only
+                // /loki/api/v1/query_range has a route, so the push path is 404
+                // at the edge rather than a write behind a role check.
+                //
+                // GET-only is the narrow rule on purpose: a future read endpoint
+                // added to the console must be routed deliberately, not inherited
+                // from a blanket /loki/** permit.
+                .pathMatchers(HttpMethod.GET, "/loki/**").hasRole(MANAGER_ROLE)
                 .anyExchange().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2

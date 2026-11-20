@@ -17,6 +17,7 @@ import { LiveEventStreamComponent } from './components/observability/live-event-
 import { ArchivedTransactionsComponent } from './components/observability/archived-transactions/archived-transactions.component';
 import { OutboxComponent } from './components/observability/outbox/outbox.component';
 import { SystemHealthComponent } from './components/observability/system-health/system-health.component';
+import { LogsComponent } from './components/observability/logs/logs.component';
 import { UserAdminComponent } from './components/backoffice/user-admin/user-admin.component';
 import { LoginComponent } from './components/login/login.component';
 import { authGuard } from './guards/auth.guard';
@@ -70,6 +71,12 @@ export const routes: Routes = [
       { path: 'observability/outbox', component: OutboxComponent, canActivate: [roleGuard(['MANAGER'])] },
       // The fleet view. Manager-only: it maps every instance and its failures.
       { path: 'observability/system-health', component: SystemHealthComponent, canActivate: [roleGuard(['MANAGER'])] },
+      // The log console (specs/007-log-console.md). Manager-only for the same
+      // reason as System Health, plus one of its own: the lines name accounts,
+      // transactions and failures. The guard is UX; the gateway's GET /loki/**
+      // rule is the enforcement, and a teller who types the URL is redirected
+      // here and would get 403 from the data path anyway.
+      { path: 'observability/logs', component: LogsComponent, canActivate: [roleGuard(['MANAGER'])] },
       // Manager-only access administration. The guard is UX — the gateway
       // enforces the same rule and answers 403 to anyone without the role.
       { path: 'backoffice/users', component: UserAdminComponent, canActivate: [roleGuard(['MANAGER'])] },

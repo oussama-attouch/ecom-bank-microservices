@@ -89,7 +89,11 @@ export class AppComponent implements OnInit {
         // Manager-only, and for a stronger reason than the others: it names every
         // instance, its latency and its failures, which is a topology map of the
         // estate. The gateway enforces the same role on /api/admin/**.
-        { label: 'System Health', icon: 'pi pi-heart', route: '/observability/system-health', roles: ['MANAGER'] }
+        { label: 'System Health', icon: 'pi pi-heart', route: '/observability/system-health', roles: ['MANAGER'] },
+        // Manager-only like the API behind it: the lines name accounts,
+        // transactions and failures. The route guard and the gateway's
+        // GET /loki/** rule enforce the same role.
+        { label: 'Logs', icon: 'pi pi-list', route: '/observability/logs', roles: ['MANAGER'] }
       ]
     },
     {

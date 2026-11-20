@@ -1,0 +1,196 @@
+<header class="page-head">
+  <div class="title-block">
+    <h1>Logs</h1>
+    <p class="page-sub">
+      Every service's log lines, read from Loki through the gateway. Each line carries the
+      <code>traceId</code> that ties it to a request; the newest 500 of 1,000 fetched lines are
+      shown. Manager-only.
+    </p>
+  </div>
+  <div class="page-meta">
+    <span class="live-badge" [class.is-live]="autoRefresh && !loading()">
+      <span class="dot"></span>{{ autoRefresh ? 'LIVE 5s' : 'PAUSED' }}
+    </span>
+    @if (lastUpdated(); as ts) {
+      <span class="stamp">{{ ts | date: 'HH:mm:ss' }}</span>
+    }
+    <button type="button" class="refresh" (click)="reload()" [disabled]="loading()" title="Query Loki now">
+      <i class="pi" [class.pi-refresh]="!loading()" [class.pi-spinner]="loading()" [class.pi-spin]="loading()"></i>
+      Refresh
+    </button>
+  </div>
+</header>
+
+@if (error(); as message) {
+  <div class="global-error" role="alert">
+    <i class="pi pi-exclamation-triangle"></i>
+    <div>
+      <strong>{{ lines().length ? 'Showing the last successful result.' : 'The log query failed.' }}</strong>
+      <p>{{ message }}</p>
+    </div>
+    <button type="button" class="retry" (click)="reload()">Retry</button>
+  </div>
+}
+
+<section class="filters" aria-label="Log filters">
+  <label class="field">
+    <span>Service</span>
+    <select [(ngModel)]="service" (change)="reload()" aria-label="Service">
+      <option [ngValue]="allServices">All services</option>
+      @for (svc of services; track svc) {
+        <option [ngValue]="svc">{{ svc }}</option>
+      }
+    </select>
+  </label>
+
+  <label class="field">
+    <span>Level</span>
+    <!-- No reload on change: this filter runs in the browser, so it cannot
+         invalidate the fetched window. It is deliberately not a LogQL filter —
+         see the component comment and specs/007-log-console.md. -->
+    <select [(ngModel)]="level" aria-label="Level">
+      @for (l of levelOptions; track l) {
+        <option [ngValue]="l">{{ l === 'ALL' ? 'All levels' : l }}</option>
+      }
+    </select>
+  </label>
+
+  <label class="field">
+    <span>Window</span>
+    <select [(ngModel)]="minutes" (change)="reload()" aria-label="Time window">
+      @for (w of windowOptions; track w.value) {
+        <option [ngValue]="w.value">{{ w.label }}</option>
+      }
+    </select>
+  </label>
+
+  <label class="field search">
+    <span>Filter text</span>
+    <input type="text"
+           [(ngModel)]="text"
+           (input)="onSearchInput()"
+           (keydown.enter)="onSearchEnter()"
+           placeholder="traceId, transactionId, message…"
+           aria-label="Filter text">
+  </label>
+
+  <label class="auto">
+    <input type="checkbox" [(ngModel)]="autoRefresh">
+    <span>Auto 5s</span>
+  </label>
+
+  <button type="button" class="clear" (click)="clearFilters()">
+    <i class="pi pi-filter-slash"></i> Clear
+  </button>
+</section>
+
+<section class="summary">
+  <div class="sum">
+    <label>Shown</label>
+    <span>{{ visibleLines.length }}</span>
+  </div>
+  <div class="sum">
+    <label title="The newest entries fetched before the level filter">Fetched</label>
+    <span>{{ lines().length }}</span>
+  </div>
+  <div class="sum">
+    <label>Errors</label>
+    <span class="err">{{ errorCount() }}</span>
+  </div>
+  <div class="sum">
+    <label>Warnings</label>
+    <span class="warn">{{ warnCount() }}</span>
+  </div>
+</section>
+
+@if (loading() && lines().length === 0) {
+  <div class="loading-panel">
+    <i class="pi pi-spinner pi-spin"></i>
+    <span>Reading Loki…</span>
+  </div>
+} @else if (visibleLines.length === 0 && !error()) {
+  <div class="empty">
+    <i class="pi pi-align-left"></i>
+    <div>
+      <strong>{{ lines().length ? 'No fetched line matches this level.' : 'No lines in this window.' }}</strong>
+      @if (lines().length) {
+        <p>
+          The level filter is applied in the browser over the fetched window. Choose
+          <em>All levels</em>, or narrow the window and retry for a fresh set.
+        </p>
+      } @else {
+        <p>
+          Nothing matched the service, filter text and window. Widen the window, clear the text
+          filter, or pick another service.
+        </p>
+      }
+      <p class="empty-hint">
+        Lines exist only while the services write <code>logs/&lt;service&gt;.log</code> — start
+        them from the repository root, or set <code>LOG_DIR</code> to the directory Promtail
+        mounts.
+      </p>
+    </div>
+  </div>
+} @else {
+  <section class="log-card">
+    <div class="log-head">
+      <span class="log-count">{{ visibleLines.length }} lines</span>
+      <span class="log-window">{{ windowLabel }}</span>
+      <a [href]="grafanaLink"
+         target="_blank"
+         rel="noopener noreferrer"
+         class="external"
+         title="Open Grafana Explore for aggregate LogQL">
+        Grafana <i class="pi pi-external-link"></i>
+      </a>
+    </div>
+
+    <div class="log-rows">
+      @for (line of visibleLines; track line.id) {
+        @if (line.raw) {
+          <!-- A line the pattern did not match: a stack-trace continuation, a
+               framework banner, an OTel export warning. Kept, not dropped. -->
+          <div class="log-raw">
+            <span class="raw-time">{{ line.time }}</span>
+            <span class="raw-msg">{{ line.message }}</span>
+          </div>
+        } @else {
+          <div class="log-row"
+               [class.is-error]="line.level === 'ERROR'"
+               [class.is-warn]="line.level === 'WARN'">
+            <span class="time" [title]="line.fullStamp">{{ line.time }}</span>
+            <span class="lvl lvl-{{ line.level.toLowerCase() }}">{{ line.level }}</span>
+            <span class="svc" [title]="line.service">{{ line.service }}</span>
+            <span class="logger" [title]="line.logger">{{ line.logger }}</span>
+            <span class="msg">{{ line.message }}</span>
+            @if (line.traceId) {
+              <a class="trace"
+                 [href]="traceUrl(line.traceId)"
+                 target="_blank"
+                 rel="noopener noreferrer"
+                 [title]="'Open trace ' + line.traceId + ' in Zipkin'">
+                <i class="pi pi-external-link"></i> {{ shortTrace(line.traceId) }}
+              </a>
+            } @else {
+              <span class="trace-empty" aria-hidden="true"></span>
+            }
+          </div>
+        }
+      }
+    </div>
+
+    <div class="log-foot">
+      <span class="cap">
+        @if (capped) {
+          Capped: fetched {{ lines().length }}, showing {{ visibleLines.length }}. Narrow the window or add a filter.
+        } @else {
+          Fetched {{ lines().length }}, showing {{ visibleLines.length }}.
+        }
+      </span>
+      <details class="query-details">
+        <summary>LogQL</summary>
+        <code>{{ queryPreview }}</code>
+      </details>
+    </div>
+  </section>
+}

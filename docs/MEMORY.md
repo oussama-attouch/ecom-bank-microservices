@@ -18,3 +18,8 @@
   calls `inventory-service` before the test client's first registry fetch. It
   passes alone and can fail in a full `mvn test` run; that failure is
   environmental, not caused by the change under test.
+- Loki serves its API under **`/loki`**: `/loki/api/v1/query_range` is the real
+  path, and `/api/v1/query_range` is a 404. A gateway route to Loki must forward
+  the path unchanged; `StripPrefix=1` produces Loki's own `404 page not found`.
+- The frontend `npm test` must run from `ecom-frontend` (or with that workdir);
+  from the repository root it fails with `Missing script: "test"`.
